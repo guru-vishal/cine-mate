@@ -227,9 +227,11 @@ export const AuthProvider = ({ children }) => {
       const favoritesToUpdate = favoritesList.map(movie => ({
         movieId: movie.id.toString(),
         title: movie.title,
-        posterPath: movie.poster_path,
-        releaseDate: movie.release_date,
-        rating: movie.vote_average
+        poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : movie.poster_url,
+        description: movie.overview,
+        rating: movie.vote_average,
+        year: movie.release_date ? new Date(movie.release_date).getFullYear().toString() : '',
+        genre: movie.genres || []
       }));
 
       const response = await api.put('/auth/favorites', { favorites: favoritesToUpdate });

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
 import { movieService } from '../services/movieService';
 import { useAuth } from './AuthContext';
+import { convertGenreIdsToNames, convertGenreNamesToIds } from '../utils/genreMapping';
 
 const MovieContext = createContext();
 
@@ -69,14 +70,28 @@ const movieReducer = (state, action) => {
 
 export const MovieProvider = ({ children }) => {
   const [state, dispatch] = useReducer(movieReducer, initialState);
-  const { user, updateUserFavorites } = useAuth();
+  const { user } = useAuth();
 
   // Sync user data with authentication
   useEffect(() => {
     if (user) {
       // User is authenticated - sync with server data
-      if (user.favorites) {
-        dispatch({ type: 'SET_FAVORITES', payload: user.favorites });
+      if (user.favorites && Array.isArray(user.favorites)) {
+        // Convert MongoDB favorites format to MovieContext format
+        const convertedFavorites = user.favorites.map(fav => {
+          return {
+            id: parseInt(fav.movieId) || fav.movieId,
+            title: fav.title || 'Untitled Movie',
+            poster_path: fav.poster, // This is now the full URL from MongoDB
+            poster_url: fav.poster, // Same as poster_path since we store full URLs
+            overview: fav.description || 'No description available.',
+            vote_average: fav.rating || 0,
+            release_date: fav.year ? `${fav.year}-01-01` : '',
+            genre_ids: convertGenreNamesToIds(fav.genre || []),
+            genres: fav.genre || [] // Keep both for compatibility
+          };
+        });
+        dispatch({ type: 'SET_FAVORITES', payload: convertedFavorites });
       }
       
       // Load user preferences and watch history
@@ -180,17 +195,62 @@ export const MovieProvider = ({ children }) => {
   const addToFavorites = async (movie) => {
     if (!state.favorites.find(fav => fav.id === movie.id)) {
       if (user) {
-        // Add to user's favorites on server
+        // Add to user's favorites on server using individual endpoint
         try {
-          const newFavorites = [...state.favorites, movie];
-          await updateUserFavorites(newFavorites);
-          dispatch({ type: 'ADD_TO_FAVORITES', payload: movie });
+          const movieData = {
+            id: movie.id,
+            title: movie.title,
+            // Handle both TMDB and database formats for poster
+            poster: movie.poster_url || 
+                    (movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : null),
+            // Handle both TMDB and database formats for description  
+            description: movie.overview || movie.description,
+            // Handle both TMDB and database formats for rating
+            rating: movie.vote_average || movie.rating,
+            // Handle both TMDB and database formats for year
+            year: movie.release_date ? new Date(movie.release_date).getFullYear().toString() : 
+                  movie.year ? movie.year.toString() : '',
+            // Handle both TMDB and database formats for genre
+            genre: movie.genre || convertGenreIdsToNames(movie.genre_ids || [])
+          };
+
+          // Debug logging - check all movie properties
+          console.log('=== FRONTEND DEBUG ===');
+          console.log('Original movie object (all properties):', Object.keys(movie));
+          console.log('Full movie object:', movie);
+          console.log('poster_path:', movie.poster_path);
+          console.log('poster_url:', movie.poster_url);
+          console.log('genre_ids:', movie.genre_ids);
+          console.log('genres:', movie.genres);
+          console.log('overview:', movie.overview);
+          console.log('description:', movie.description);
+          console.log('vote_average:', movie.vote_average);
+          console.log('rating:', movie.rating);
+          console.log('release_date:', movie.release_date);
+          console.log('convertGenreIdsToNames(movie.genre_ids):', convertGenreIdsToNames(movie.genre_ids || []));
+          console.log('Final movieData being sent:', movieData);
+          console.log('=== END FRONTEND DEBUG ===');
+
+          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/auth/favorites/${movie.id}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify(movieData)
+          });
+
+          const data = await response.json();
           
-          // Refresh personalized recommendations after adding favorite
-          setTimeout(() => getPersonalizedRecommendations(), 1000);
+          if (data.success) {
+            dispatch({ type: 'ADD_TO_FAVORITES', payload: movie });
+            // Refresh personalized recommendations after adding favorite
+            setTimeout(() => getPersonalizedRecommendations(), 1000);
+          } else {
+            throw new Error(data.message);
+          }
         } catch (error) {
-          console.error('Error updating favorites:', error);
-          // Show user feedback about the error
+          console.error('Error adding to favorites:', error);
           dispatch({ type: 'SET_ERROR', payload: 'Failed to add to favorites. Please try again.' });
         }
       } else {
@@ -202,16 +262,26 @@ export const MovieProvider = ({ children }) => {
 
   const removeFromFavorites = async (movieId) => {
     if (user) {
-      // Remove from user's favorites on server
+      // Remove from user's favorites on server using individual endpoint
       try {
-        const newFavorites = state.favorites.filter(movie => movie.id !== movieId);
-        await updateUserFavorites(newFavorites);
-        dispatch({ type: 'REMOVE_FROM_FAVORITES', payload: movieId });
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/auth/favorites/${movieId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        const data = await response.json();
         
-        // Refresh personalized recommendations after removing favorite
-        setTimeout(() => getPersonalizedRecommendations(), 1000);
+        if (data.success) {
+          dispatch({ type: 'REMOVE_FROM_FAVORITES', payload: movieId });
+          // Refresh personalized recommendations after removing favorite
+          setTimeout(() => getPersonalizedRecommendations(), 1000);
+        } else {
+          throw new Error(data.message);
+        }
       } catch (error) {
-        console.error('Error updating favorites:', error);
+        console.error('Error removing from favorites:', error);
         dispatch({ type: 'SET_ERROR', payload: 'Failed to remove from favorites. Please try again.' });
       }
     } else {

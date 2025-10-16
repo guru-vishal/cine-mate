@@ -15,12 +15,14 @@ const UserStats = () => {
   }, 0);
 
   const averageRating = favorites.length > 0 
-    ? (favorites.reduce((sum, movie) => sum + (movie.rating || 0), 0) / favorites.length).toFixed(1)
+    ? (favorites.reduce((sum, movie) => sum + (movie.rating || movie.vote_average || 0), 0) / favorites.length).toFixed(1)
     : 0;
 
   const genreStats = favoriteGenres.slice(0, 5).map(genre => {
     const count = favorites.filter(movie => 
-      movie.genre && movie.genre.includes(genre)
+      (movie.genre && movie.genre.includes(genre)) ||
+      (movie.genre_ids && movie.genre_ids.includes(genre)) ||
+      (movie.genres && movie.genres.includes(genre))
     ).length;
     const percentage = favorites.length > 0 ? (count / favorites.length) * 100 : 0;
     
@@ -133,7 +135,7 @@ const UserStats = () => {
                 </div>
                 <div className="flex items-center space-x-1">
                   <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                  <span className="text-sm text-gray-300">{movie.rating}</span>
+                  <span className="text-sm text-gray-300">{movie.rating || movie.vote_average || 'N/A'}</span>
                 </div>
               </div>
             ))}

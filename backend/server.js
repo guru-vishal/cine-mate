@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const connectDB = require('./config/database');
 const logger = require('./utils/logger'); // ✅ custom logger for ELK
+require('./apm'); // ✅ APM monitoring
 
 // Import routes
 const movieRoutes = require('./routes/movies');

@@ -34,7 +34,8 @@ const userSchema = new mongoose.Schema({
       required: true
     },
     title: String,
-    poster: String,
+    poster: String, // Full image URL (e.g., https://image.tmdb.org/t/p/w500/abc123.jpg)
+    description: String,
     rating: Number,
     year: String,
     genre: [String],
@@ -113,31 +114,44 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 };
 
 // Add movie to favorites
-userSchema.methods.addToFavorites = function(movieData) {
+userSchema.methods.addToFavorites = async function(movieData) {
+  console.log('=== USER MODEL DEBUG ===');
+  console.log('addToFavorites received:', JSON.stringify(movieData, null, 2));
+  
   const existingIndex = this.favorites.findIndex(
     fav => fav.movieId === movieData.id.toString()
   );
   
   if (existingIndex === -1) {
-    this.favorites.push({
+    const favoriteItem = {
       movieId: movieData.id.toString(),
       title: movieData.title,
       poster: movieData.poster,
+      description: movieData.description,
       rating: movieData.rating,
       year: movieData.year,
       genre: movieData.genre || []
-    });
+    };
+    
+    console.log('Creating favorite item:', JSON.stringify(favoriteItem, null, 2));
+    this.favorites.push(favoriteItem);
+    
+    console.log('Favorites array before save:', JSON.stringify(this.favorites, null, 2));
   }
   
-  return this.save();
+  const result = await this.save();
+  console.log('Favorites array after save:', JSON.stringify(this.favorites, null, 2));
+  console.log('=== END USER MODEL DEBUG ===');
+  
+  return result;
 };
 
 // Remove movie from favorites
-userSchema.methods.removeFromFavorites = function(movieId) {
+userSchema.methods.removeFromFavorites = async function(movieId) {
   this.favorites = this.favorites.filter(
     fav => fav.movieId !== movieId.toString()
   );
-  return this.save();
+  return await this.save();
 };
 
 // Check if movie is in favorites

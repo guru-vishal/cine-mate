@@ -171,6 +171,8 @@ router.get('/profile', auth, async (req, res) => {
       });
     }
 
+
+
     res.json({
       success: true,
       user: {
@@ -244,6 +246,14 @@ router.post('/favorites/:movieId', auth, async (req, res) => {
     const { movieId } = req.params;
     const movieData = req.body;
 
+    console.log('=== BACKEND DEBUG ===');
+    console.log('movieId from params:', movieId);
+    console.log('movieData from body:', JSON.stringify(movieData, null, 2));
+    console.log('movieData.poster:', movieData.poster);
+    console.log('movieData.genre:', movieData.genre);
+    console.log('movieData.description:', movieData.description);
+    console.log('=== END BACKEND DEBUG ===');
+
     const user = await User.findById(req.user.userId);
     if (!user) {
       return res.status(404).json({
@@ -260,10 +270,15 @@ router.post('/favorites/:movieId', auth, async (req, res) => {
       });
     }
 
-    await user.addToFavorites({
+    const favoriteData = {
       id: movieId,
       ...movieData
-    });
+    };
+
+    console.log('=== CALLING addToFavorites ===');
+    console.log('favoriteData:', JSON.stringify(favoriteData, null, 2));
+
+    await user.addToFavorites(favoriteData);
 
     res.json({
       success: true,
@@ -332,6 +347,47 @@ router.get('/favorites', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error fetching favorites'
+    });
+  }
+});
+
+// @route   PUT /api/auth/favorites
+// @desc    Update user's entire favorites list
+// @access  Private
+router.put('/favorites', auth, async (req, res) => {
+  try {
+    const { favorites } = req.body;
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Replace entire favorites array
+    user.favorites = favorites.map(fav => ({
+      movieId: fav.movieId,
+      title: fav.title,
+      poster: fav.posterPath || fav.poster,
+      rating: fav.rating,
+      year: fav.releaseDate ? new Date(fav.releaseDate).getFullYear().toString() : fav.year,
+      genre: fav.genre || []
+    }));
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Favorites updated successfully',
+      favorites: user.favorites
+    });
+  } catch (error) {
+    console.error('Update favorites error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error updating favorites'
     });
   }
 });

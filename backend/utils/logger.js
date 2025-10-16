@@ -1,21 +1,25 @@
-const { createLogger, format, transports } = require('winston');
+const winston = require('winston');
 const { ElasticsearchTransport } = require('winston-elasticsearch');
-const { Client } = require('@elastic/elasticsearch');
+require('dotenv').config();
 
-const esClient = new Client({ node: 'http://localhost:9200' });
-
-const esTransport = new ElasticsearchTransport({
+const esTransportOpts = {
   level: 'info',
-  client: esClient,
-  indexPrefix: 'cinemate-logs',
-});
+  clientOpts: {
+    node: process.env.ELASTIC_URL || 'http://localhost:9200',
+    auth: {
+      username: process.env.ELASTIC_USERNAME || 'elastic',
+      password: process.env.ELASTIC_PASSWORD || 'changeme',
+    },
+  },
+  indexPrefix: 'movieapp-logs',
+};
 
-const logger = createLogger({
-  level: 'info',
-  format: format.combine(format.timestamp(), format.json()),
+const esTransport = new ElasticsearchTransport(esTransportOpts);
+
+const logger = winston.createLogger({
   transports: [
-    new transports.Console(),
-    esTransport
+    new winston.transports.Console(),
+    esTransport,
   ],
 });
 

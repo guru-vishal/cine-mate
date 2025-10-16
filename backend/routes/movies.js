@@ -33,20 +33,25 @@ router.get('/', async (req, res) => {
     
     try {
       // Get movies from TMDB based on category
+      let tmdbResponse;
       switch (category.toLowerCase()) {
         case 'popular':
-          movies = await tmdbService.getPopularMovies(page);
+          tmdbResponse = await tmdbService.getPopularMovies(page);
+          movies = tmdbResponse.results || tmdbResponse;
           break;
         case 'top_rated':
         case 'toprated':
-          movies = await tmdbService.getTopRatedMovies(page);
+          tmdbResponse = await tmdbService.getTopRatedMovies(page);
+          movies = tmdbResponse.results || tmdbResponse;
           break;
         case 'now_playing':
         case 'nowplaying':
-          movies = await tmdbService.getNowPlayingMovies(page);
+          tmdbResponse = await tmdbService.getNowPlayingMovies(page);
+          movies = tmdbResponse.results || tmdbResponse;
           break;
         case 'upcoming':
-          movies = await tmdbService.getUpcomingMovies(page);
+          tmdbResponse = await tmdbService.getUpcomingMovies(page);
+          movies = tmdbResponse.results || tmdbResponse;
           break;
         case 'mixed':
         default:
@@ -56,22 +61,52 @@ router.get('/', async (req, res) => {
 
       // Apply filters if specified
       if (genre) {
-        movies = movies.filter(movie => 
-          movie.genre.some(g => g.toLowerCase().includes(genre.toLowerCase()))
-        );
+        movies = movies.filter(movie => {
+          // Handle both TMDB format (genre_ids) and database format (genre)
+          if (movie.genre_ids) {
+            // TMDB format - would need genre ID mapping for proper filtering
+            return true; // Skip genre filtering for TMDB format for now
+          } else if (movie.genre) {
+            // Database format
+            return movie.genre.some(g => g.toLowerCase().includes(genre.toLowerCase()));
+          }
+          return false;
+        });
       }
       
       if (year) {
-        movies = movies.filter(movie => movie.year === parseInt(year));
+        movies = movies.filter(movie => {
+          // Handle both TMDB format (release_date) and database format (year)
+          if (movie.release_date) {
+            // TMDB format
+            return new Date(movie.release_date).getFullYear() === parseInt(year);
+          } else if (movie.year) {
+            // Database format  
+            return movie.year === parseInt(year);
+          }
+          return false;
+        });
       }
       
-      // Apply sorting
+      // Apply sorting with dual format support
       if (sort === 'year') {
-        movies.sort((a, b) => b.year - a.year);
+        movies.sort((a, b) => {
+          const yearA = a.release_date ? new Date(a.release_date).getFullYear() : (a.year || 0);
+          const yearB = b.release_date ? new Date(b.release_date).getFullYear() : (b.year || 0);
+          return yearB - yearA;
+        });
       } else if (sort === 'title') {
-        movies.sort((a, b) => a.title.localeCompare(b.title));
+        movies.sort((a, b) => {
+          const titleA = a.title || a.original_title || '';
+          const titleB = b.title || b.original_title || '';
+          return titleA.localeCompare(titleB);
+        });
       } else if (sort === 'rating') {
-        movies.sort((a, b) => b.rating - a.rating);
+        movies.sort((a, b) => {
+          const ratingA = a.vote_average || a.rating || 0;
+          const ratingB = b.vote_average || b.rating || 0;
+          return ratingB - ratingA;
+        });
       }
       
       // Paginate if not mixed category (mixed is already limited)
