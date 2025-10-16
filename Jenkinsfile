@@ -47,7 +47,7 @@ pipeline {
             steps {
                 dir("${SERVER_DIR}") {
                     // Restart backend using PM2; start if not running
-                    bat "pm2 restart ${BACKEND_ENTRY} || pm2 start ${BACKEND_ENTRY}"
+                    bat "npx pm2 restart ${BACKEND_ENTRY} || npx pm2 start ${BACKEND_ENTRY}"
                 }
             }
         }
