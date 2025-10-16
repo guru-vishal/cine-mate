@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Play, TrendingUp, Sparkles, Filter, X } from 'lucide-react';
 import MovieCard from '../components/MovieCard';
+import PersonalizedRecommendations from '../components/PersonalizedRecommendations';
 import { useMovie } from '../context/MovieContext';
+import { useAuth } from '../context/AuthContext';
 
 const Home = () => {
   const { movies, recommendations, loading, fetchMovies, getRecommendations } = useMovie();
+  const { user } = useAuth();
   const [heroMovie, setHeroMovie] = useState(null);
   const [filteredMovies, setFilteredMovies] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
@@ -18,7 +21,8 @@ const Home = () => {
   useEffect(() => {
     fetchMovies();
     getRecommendations();
-  }, [fetchMovies, getRecommendations]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const moviesArray = Array.isArray(movies) ? movies : [];
@@ -313,12 +317,21 @@ const Home = () => {
             )}
           </div>
 
-          {/* Recommendations */}
+          {/* Personalized Recommendations */}
+          {user && (
+            <div className="mb-16">
+              <PersonalizedRecommendations />
+            </div>
+          )}
+
+          {/* General Recommendations */}
           {Array.isArray(recommendations) && recommendations.length > 0 && (
             <div>
               <div className="flex items-center space-x-3 mb-8">
-                <Sparkles className="h-8 w-8 text-primary-500" />
-                <h2 className="text-3xl font-bold text-white">Recommended for You</h2>
+                <TrendingUp className="h-8 w-8 text-primary-500" />
+                <h2 className="text-3xl font-bold text-white">
+                  {user ? 'Popular Movies' : 'Recommended for You'}
+                </h2>
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

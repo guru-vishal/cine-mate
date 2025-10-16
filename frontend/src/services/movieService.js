@@ -7,6 +7,10 @@ const api = axios.create({
   timeout: 15000, // Increased timeout for TMDB calls
 });
 
+// Request deduplication cache
+const requestCache = new Map();
+const CACHE_DURATION = 5000; // 5 seconds
+
 // Movie service with TMDB integration
 export const movieService = {
   // Get all movies with various filters and categories
@@ -31,8 +35,30 @@ export const movieService = {
       if (genre) queryParams.append('genre', genre);
       if (year) queryParams.append('year', year.toString());
 
-      const response = await api.get(`/movies?${queryParams}`);
-      return response.data;
+      const cacheKey = `/movies?${queryParams}`;
+      const now = Date.now();
+
+      // Check if we have a recent request for this exact same query
+      if (requestCache.has(cacheKey)) {
+        const { timestamp, promise } = requestCache.get(cacheKey);
+        if (now - timestamp < CACHE_DURATION) {
+          console.log('Returning cached request for:', cacheKey);
+          return promise;
+        } else {
+          requestCache.delete(cacheKey);
+        }
+      }
+
+      // Create new request and cache it
+      const requestPromise = api.get(`/movies?${queryParams}`).then(response => response.data);
+      requestCache.set(cacheKey, { timestamp: now, promise: requestPromise });
+
+      // Clean up cache after request completes
+      requestPromise.finally(() => {
+        setTimeout(() => requestCache.delete(cacheKey), CACHE_DURATION);
+      });
+
+      return requestPromise;
     } catch (error) {
       console.error('Error fetching movies:', error);
       throw error;

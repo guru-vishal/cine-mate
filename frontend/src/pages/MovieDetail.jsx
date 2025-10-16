@@ -1,17 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Heart, Star, Play, Clock, Calendar, User, Film } from 'lucide-react';
 import { movieService } from '../services/movieService';
 import { useMovie } from '../context/MovieContext';
+import { useAuth } from '../context/AuthContext';
 import MovieCard from '../components/MovieCard';
 
 const MovieDetail = () => {
   const { id } = useParams();
-  const { favorites, addToFavorites, removeFromFavorites, movies } = useMovie();
+  const navigate = useNavigate();
+  const { favorites, addToFavorites, removeFromFavorites, movies, addToWatchHistory } = useMovie();
+  const { user } = useAuth();
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
   const [similarMovies, setSimilarMovies] = useState([]);
-  const [showProviderModal, setShowProviderModal] = useState(false);
+
 
   const isFavorite = movie && favorites.some(fav => fav.id === movie.id);
 
@@ -21,6 +24,11 @@ const MovieDetail = () => {
       try {
         const movieData = await movieService.getMovieById(id);
         setMovie(movieData);
+        
+        // Add to watch history for recommendations
+        if (movieData && user) {
+          addToWatchHistory(movieData);
+        }
         
         // Get similar movies (same genre)
         if (movieData && movies.length > 0) {
@@ -42,9 +50,22 @@ const MovieDetail = () => {
     };
 
     fetchMovie();
-  }, [id, movies]);
+  }, [id, movies, addToWatchHistory, user]);
 
   const handleFavoriteToggle = () => {
+    // Check if user is authenticated
+    if (!user) {
+      // Redirect to login page with return URL
+      navigate('/login', { 
+        state: { 
+          from: `/movie/${id}`,
+          message: 'Please log in to add movies to your favorites'
+        }
+      });
+      return;
+    }
+
+    // User is authenticated, proceed with favorite toggle
     if (isFavorite) {
       removeFromFavorites(movie.id);
     } else {
@@ -58,45 +79,11 @@ const MovieDetail = () => {
     window.open(justWatchUrl, '_blank');
   };
 
-    const openSearchFallback = () => {
-    const searchUrl = `https://www.justwatch.com/us/search?q=${encodeURIComponent(movie.title || '')}`;
-    window.open(searchUrl, '_blank');
-  };
 
-  const handleProviderSelect = (provider) => {
-    setShowProviderModal(false);
-    if (provider.url && provider.url !== '#') {
-      window.open(provider.url, '_blank');
-    } else {
-      openSearchFallback();
-    }
-  };
 
-  const getProviderFallbackLogo = (providerName) => {
-    const logoMap = {
-      'Netflix': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/netflix.svg',
-      'Prime Video': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/amazonprime.svg',
-      'Amazon Prime Video': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/amazonprime.svg',
-      'Disney Plus': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/disney.svg',
-      'Disney+': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/disney.svg',
-      'Hulu': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/hulu.svg',
-      'HBO Max': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/hbo.svg',
-      'Apple TV Plus': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/appletv.svg',
-      'Apple TV+': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/appletv.svg',
-      'Paramount Plus': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/paramount.svg',
-      'Paramount+': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/paramount.svg',
-      'Peacock': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/peacock.svg',
-      'YouTube': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/youtube.svg',
-      'Crunchyroll': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/crunchyroll.svg',
-      'Funimation': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/funimation.svg',
-      'Tubi': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/tubi.svg',
-      'Pluto TV': 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/pluto.svg',
-      'JioHotstar': 'https://logoeps.com/wp-content/uploads/2022/12/disney-hotstar-vector-logo-small.png',
-      'Disney+ Hotstar': 'https://logoeps.com/wp-content/uploads/2022/12/disney-hotstar-vector-logo-small.png'
-    };
-    
-    return logoMap[providerName] || `https://ui-avatars.com/api/?name=${encodeURIComponent(providerName)}&background=ef4444&color=fff&size=64&format=svg`;
-  };
+
+
+
 
   if (loading) {
     return (
@@ -214,25 +201,10 @@ const MovieDetail = () => {
                 <button 
                   onClick={handleWatchNow}
                   className="flex items-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white px-8 py-4 rounded-full font-semibold transition-all duration-300 transform hover:scale-105"
-                  title={movie.watch_providers && movie.watch_providers.length > 0 
-                    ? movie.watch_providers.length === 1
-                      ? `Watch on ${movie.watch_providers[0]?.name || 'Available Platform'}`
-                      : `Choose from ${movie.watch_providers.length} available platforms`
-                    : 'Search for this movie online'
-                  }
+                  title="Watch Now - Search on JustWatch"
                 >
                   <Play className="h-6 w-6 fill-current" />
-                  <span>
-                    {movie.watch_providers && movie.watch_providers.length > 0 
-                      ? movie.watch_providers.length === 1
-                        ? (() => {
-                            const providerName = movie.watch_providers[0]?.name || '';
-                            return providerName.length > 12 ? 'Watch Now' : `Watch on ${providerName}`;
-                          })()
-                        : `Watch Now (${movie.watch_providers.length} options)`
-                      : 'Watch Now'
-                    }
-                  </span>
+                  <span>Watch Now</span>
                 </button>
                 
                 <button
@@ -248,40 +220,9 @@ const MovieDetail = () => {
                 </button>
               </div>
 
-              {/* Watch Providers */}
-              {movie.watch_providers && movie.watch_providers.length > 0 ? (
-                <div className="mb-8 animate-fade-in">
-                  <h3 className="text-xl font-semibold text-white mb-4">Available On</h3>
-                  <div className="flex flex-wrap gap-4">
-                    {movie.watch_providers.slice(0, 8).map((provider, index) => (
-                      <button
-                        key={index}
-                        onClick={() => handleProviderSelect(provider)}
-                        className="flex items-center space-x-2 bg-white/10 hover:bg-white/20 text-white px-4 py-3 rounded-lg transition-all duration-300 transform hover:scale-105 border border-white/20"
-                        title={`Watch on ${provider.name} (${provider.type})`}
-                      >
-                        <img
-                          src={provider.logo || getProviderFallbackLogo(provider.name)}
-                          alt={provider.name}
-                          className="w-6 h-6 rounded"
-                          onError={(e) => {
-                            const fallbackLogo = getProviderFallbackLogo(provider.name);
-                            if (fallbackLogo && e.target.src !== fallbackLogo) {
-                              e.target.src = fallbackLogo;
-                            } else {
-                              e.target.style.display = 'none';
-                            }
-                          }}
-                        />
-                        <span className="text-sm font-medium">{provider.name}</span>
-                        <span className="text-xs text-gray-400 capitalize">({provider.type})</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="mb-8 animate-fade-in">
-                  <h3 className="text-xl font-semibold text-white mb-4">Where to Watch</h3>
+              {/* Where to Watch */}
+              <div className="mb-8 animate-fade-in">
+                <h3 className="text-xl font-semibold text-white mb-4">Where to Watch</h3>
                   <p className="text-gray-400 mb-4 text-sm">
                     Provider information is currently unavailable. Try searching on these platforms:
                   </p>
@@ -310,6 +251,24 @@ const MovieDetail = () => {
                         url: `https://tv.apple.com/search?term=${encodeURIComponent(movie.title || '')}`, 
                         color: 'bg-gray-600',
                         logo: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/appletv.svg'
+                      },
+                      { 
+                        name: 'Zee5', 
+                        url: `https://www.zee5.com/search?q=${encodeURIComponent(movie.title || '')}`, 
+                        color: 'bg-indigo-600',
+                        logo: 'https://logoeps.com/wp-content/uploads/2022/12/zee5-vector-logo-small.png'
+                      },
+                      { 
+                        name: 'SonyLIV', 
+                        url: `https://www.sonyliv.com/searchresults?searchfor=${encodeURIComponent(movie.title || '')}`, 
+                        color: 'bg-orange-600',
+                        logo: 'https://logoeps.com/wp-content/uploads/2022/12/sony-liv-vector-logo-small.png'
+                      },
+                      { 
+                        name: 'YT Movies', 
+                        url: `https://www.youtube.com/feed/storefront?bp=kgEDCPYDogUCKAU%3D&search_query=${encodeURIComponent(movie.title || '')}`, 
+                        color: 'bg-red-500',
+                        logo: 'https://cdn.jsdelivr.net/gh/simple-icons/simple-icons@v9/icons/youtube.svg'
                       }
                     ].map((platform, index) => (
                       <button
@@ -332,7 +291,6 @@ const MovieDetail = () => {
                     ))}
                   </div>
                 </div>
-              )}
 
               {/* Cast */}
               <div className="animate-fade-in">
@@ -377,47 +335,7 @@ const MovieDetail = () => {
         </section>
       )}
 
-      {/* Provider Selection Modal */}
-      {showProviderModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 rounded-2xl p-6 max-w-md w-full mx-4 animate-scale-in">
-            <h3 className="text-xl font-semibold text-white mb-4">Choose a Platform</h3>
-            <p className="text-gray-400 mb-6 text-sm">Select where you'd like to watch this movie:</p>
-            
-            <div className="space-y-3 max-h-60 overflow-y-auto">
-              {movie.watch_providers?.map((provider, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleProviderSelect(provider)}
-                  className="w-full flex items-center space-x-3 p-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
-                >
-                  <img
-                    src={provider.logo}
-                    alt={provider.name}
-                    className="w-8 h-8 rounded"
-                    onError={(e) => {
-                      e.target.style.display = 'none';
-                    }}
-                  />
-                  <div className="flex-1 text-left">
-                    <div className="text-white font-medium">{provider.name}</div>
-                    <div className="text-gray-400 text-xs capitalize">{provider.type}</div>
-                  </div>
-                </button>
-              ))}
-              
 
-            </div>
-            
-            <button
-              onClick={() => setShowProviderModal(false)}
-              className="w-full mt-4 py-2 px-4 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

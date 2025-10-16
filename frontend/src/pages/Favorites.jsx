@@ -1,10 +1,13 @@
 import React from 'react';
-import { Heart, Trash2 } from 'lucide-react';
+import { Heart, Trash2, LogIn } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import MovieCard from '../components/MovieCard';
 import { useMovie } from '../context/MovieContext';
+import { useAuth } from '../context/AuthContext';
 
 const Favorites = () => {
   const { favorites, removeFromFavorites } = useMovie();
+  const { user } = useAuth();
 
   const clearAllFavorites = () => {
     if (window.confirm('Are you sure you want to remove all favorites?')) {
@@ -37,19 +40,42 @@ const Favorites = () => {
         </div>
 
         {/* Favorites Grid */}
-        {favorites.length === 0 ? (
+        {!user ? (
+          <div className="text-center py-20">
+            <LogIn className="h-24 w-24 text-gray-600 mx-auto mb-6" />
+            <h2 className="text-2xl font-semibold text-gray-400 mb-4">Login Required</h2>
+            <p className="text-gray-500 mb-8">
+              Please log in to view and manage your favorite movies
+            </p>
+            <div className="flex items-center justify-center space-x-4">
+              <Link
+                to="/login"
+                className="inline-flex items-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg transition-colors duration-300"
+              >
+                <LogIn className="h-4 w-4" />
+                <span>Login</span>
+              </Link>
+              <Link
+                to="/signup"
+                className="inline-flex items-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg transition-colors duration-300"
+              >
+                <span>Sign Up</span>
+              </Link>
+            </div>
+          </div>
+        ) : favorites.length === 0 ? (
           <div className="text-center py-20">
             <Heart className="h-24 w-24 text-gray-600 mx-auto mb-6" />
             <h2 className="text-2xl font-semibold text-gray-400 mb-4">No favorites yet</h2>
             <p className="text-gray-500 mb-8">
               Start adding movies to your favorites to see them here
             </p>
-            <a
-              href="/"
+            <Link
+              to="/"
               className="inline-flex items-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg transition-colors duration-300"
             >
               <span>Browse Movies</span>
-            </a>
+            </Link>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

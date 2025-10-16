@@ -14,14 +14,57 @@ class TMDBService {
       },
       timeout: 10000
     });
+    
+    // Request throttling
+    this.requestQueue = [];
+    this.isProcessing = false;
+    this.lastRequestTime = 0;
+    this.MIN_REQUEST_INTERVAL = 100; // 100ms between requests
+  }
+
+  async throttledRequest(requestFn) {
+    return new Promise((resolve, reject) => {
+      this.requestQueue.push({ requestFn, resolve, reject });
+      this.processQueue();
+    });
+  }
+
+  async processQueue() {
+    if (this.isProcessing || this.requestQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessing = true;
+
+    while (this.requestQueue.length > 0) {
+      const { requestFn, resolve, reject } = this.requestQueue.shift();
+      
+      const now = Date.now();
+      const timeSinceLastRequest = now - this.lastRequestTime;
+      
+      if (timeSinceLastRequest < this.MIN_REQUEST_INTERVAL) {
+        await new Promise(resolve => setTimeout(resolve, this.MIN_REQUEST_INTERVAL - timeSinceLastRequest));
+      }
+
+      try {
+        const result = await requestFn();
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+
+      this.lastRequestTime = Date.now();
+    }
+
+    this.isProcessing = false;
   }
 
   // Get popular movies
   async getPopularMovies(page = 1) {
     try {
-      const response = await this.api.get('/movie/popular', {
-        params: { page }
-      });
+      const response = await this.throttledRequest(() => 
+        this.api.get('/movie/popular', { params: { page } })
+      );
       return this.transformMovieList(response.data.results);
     } catch (error) {
       console.error('Error fetching popular movies:', error);
@@ -189,7 +232,7 @@ class TMDBService {
     
     // Process watch providers (focus on US for now, can be expanded)
     const usProviders = watchProviders.US || {};
-    const streamingPlatforms = this.extractWatchProviders(usProviders);
+    const streamingPlatforms = this.extractWatchProviders(usProviders, tmdbMovie.title);
 
     return {
       id: tmdbMovie.id.toString(),
@@ -291,7 +334,7 @@ class TMDBService {
   }
 
   // Extract and format watch providers
-  extractWatchProviders(usProviders) {
+  extractWatchProviders(usProviders, movieTitle = '') {
     const providers = [];
     
     // Streaming platforms (flatrate)
@@ -301,7 +344,7 @@ class TMDBService {
           name: provider.provider_name,
           logo: `${TMDB_IMAGE_BASE_URL}/original${provider.logo_path}`,
           type: 'stream',
-          url: this.getProviderUrl(provider.provider_name)
+          url: this.getProviderUrl(provider.provider_name, movieTitle)
         });
       });
     }
@@ -313,7 +356,7 @@ class TMDBService {
           name: provider.provider_name,
           logo: `${TMDB_IMAGE_BASE_URL}/original${provider.logo_path}`,
           type: 'rent',
-          url: this.getProviderUrl(provider.provider_name)
+          url: this.getProviderUrl(provider.provider_name, movieTitle)
         });
       });
     }
@@ -325,7 +368,7 @@ class TMDBService {
           name: provider.provider_name,
           logo: `${TMDB_IMAGE_BASE_URL}/original${provider.logo_path}`,
           type: 'buy',
-          url: this.getProviderUrl(provider.provider_name)
+          url: this.getProviderUrl(provider.provider_name, movieTitle)
         });
       });
     }
@@ -334,26 +377,67 @@ class TMDBService {
   }
 
   // Get provider URLs
-  getProviderUrl(providerName) {
+  getProviderUrl(providerName, movieTitle = '') {
+    const encodedTitle = encodeURIComponent(movieTitle);
+    
     const providerUrls = {
-      'Netflix': 'https://www.netflix.com',
-      'Amazon Prime Video': 'https://www.primevideo.com',
-      'Apple TV': 'https://tv.apple.com',
-      'Disney Plus': 'https://www.disneyplus.com',
-      'Hulu': 'https://www.hulu.com',
-      'HBO Max': 'https://www.hbomax.com',
-      'Paramount Plus': 'https://www.paramountplus.com',
-      'Peacock': 'https://www.peacocktv.com',
-      'YouTube': 'https://www.youtube.com/movies',
-      'Google Play Movies': 'https://play.google.com/store/movies',
-      'Vudu': 'https://www.vudu.com',
-      'Microsoft Store': 'https://www.microsoft.com/store/movies-and-tv',
-      'Amazon Video': 'https://www.primevideo.com',
-      'Apple iTunes': 'https://tv.apple.com',
-      'JioHotstar': 'https://www.hotstar.com/in',
-      'Disney+ Hotstar': 'https://www.hotstar.com/in',
-      'Hotstar': 'https://www.hotstar.com/in',
-      'JustWatch': 'https://www.justwatch.com'
+      // Major US/International Platforms
+      'Netflix': movieTitle ? `https://www.netflix.com/search?q=${encodedTitle}` : 'https://www.netflix.com',
+      'Amazon Prime Video': movieTitle ? `https://www.primevideo.com/search/ref=atv_nb_sr?phrase=${encodedTitle}` : 'https://www.primevideo.com',
+      'Apple TV': movieTitle ? `https://tv.apple.com/search?term=${encodedTitle}` : 'https://tv.apple.com',
+      'Apple TV+': movieTitle ? `https://tv.apple.com/search?term=${encodedTitle}` : 'https://tv.apple.com',
+      'Disney Plus': movieTitle ? `https://www.disneyplus.com/search/${encodedTitle}` : 'https://www.disneyplus.com',
+      'Disney+': movieTitle ? `https://www.disneyplus.com/search/${encodedTitle}` : 'https://www.disneyplus.com',
+      'Hulu': movieTitle ? `https://www.hulu.com/search?q=${encodedTitle}` : 'https://www.hulu.com',
+      'HBO Max': movieTitle ? `https://www.hbomax.com/search?q=${encodedTitle}` : 'https://www.hbomax.com',
+      'Max': movieTitle ? `https://www.max.com/search/${encodedTitle}` : 'https://www.max.com',
+      'Paramount Plus': movieTitle ? `https://www.paramountplus.com/search/${encodedTitle}` : 'https://www.paramountplus.com',
+      'Paramount+': movieTitle ? `https://www.paramountplus.com/search/${encodedTitle}` : 'https://www.paramountplus.com',
+      'Peacock': movieTitle ? `https://www.peacocktv.com/search/${encodedTitle}` : 'https://www.peacocktv.com',
+      'Peacock Premium': movieTitle ? `https://www.peacocktv.com/search/${encodedTitle}` : 'https://www.peacocktv.com',
+      
+      // Digital/Rental Platforms
+      'YouTube': movieTitle ? `https://www.youtube.com/results?search_query=${encodedTitle}+full+movie` : 'https://www.youtube.com/movies',
+      'YouTube Movies': movieTitle ? `https://www.youtube.com/results?search_query=${encodedTitle}+full+movie` : 'https://www.youtube.com/movies',
+      'Google Play Movies': movieTitle ? `https://play.google.com/store/search?q=${encodedTitle}&c=movies` : 'https://play.google.com/store/movies',
+      'Google Play Movies & TV': movieTitle ? `https://play.google.com/store/search?q=${encodedTitle}&c=movies` : 'https://play.google.com/store/movies',
+      'Vudu': movieTitle ? `https://www.vudu.com/content/movies/search/${encodedTitle}` : 'https://www.vudu.com',
+      'Microsoft Store': movieTitle ? `https://www.microsoft.com/store/search?q=${encodedTitle}` : 'https://www.microsoft.com/store/movies-and-tv',
+      'Amazon Video': movieTitle ? `https://www.primevideo.com/search/ref=atv_nb_sr?phrase=${encodedTitle}` : 'https://www.primevideo.com',
+      'Apple iTunes': movieTitle ? `https://tv.apple.com/search?term=${encodedTitle}` : 'https://tv.apple.com',
+      
+      // International/Regional Platforms
+      'JioHotstar': movieTitle ? `https://www.hotstar.com/in/search?q=${encodedTitle}` : 'https://www.hotstar.com/in',
+      'Disney+ Hotstar': movieTitle ? `https://www.hotstar.com/in/search?q=${encodedTitle}` : 'https://www.hotstar.com/in',
+      'Hotstar': movieTitle ? `https://www.hotstar.com/in/search?q=${encodedTitle}` : 'https://www.hotstar.com/in',
+      'JioCinema': movieTitle ? `https://www.jiocinema.com/search/${encodedTitle}` : 'https://www.jiocinema.com',
+      'Zee5': movieTitle ? `https://www.zee5.com/search?q=${encodedTitle}` : 'https://www.zee5.com',
+      'SonyLIV': movieTitle ? `https://www.sonyliv.com/searchresults?searchfor=${encodedTitle}` : 'https://www.sonyliv.com',
+      'Voot': movieTitle ? `https://www.voot.com/search?q=${encodedTitle}` : 'https://www.voot.com',
+      'MX Player': movieTitle ? `https://www.mxplayer.in/search?q=${encodedTitle}` : 'https://www.mxplayer.in',
+      'Aha': movieTitle ? `https://www.aha.video/search?q=${encodedTitle}` : 'https://www.aha.video',
+      
+      // Free Streaming Platforms
+      'Tubi': movieTitle ? `https://tubitv.com/search/${encodedTitle}` : 'https://tubitv.com',
+      'Pluto TV': movieTitle ? `https://pluto.tv/search/details/${encodedTitle}` : 'https://pluto.tv',
+      'Crackle': movieTitle ? `https://www.crackle.com/search?q=${encodedTitle}` : 'https://www.crackle.com',
+      'IMDb TV': movieTitle ? `https://www.imdb.com/find?q=${encodedTitle}&s=tt&ttype=ft` : 'https://www.imdb.com',
+      'Roku Channel': movieTitle ? `https://therokuchannel.roku.com/search/${encodedTitle}` : 'https://therokuchannel.roku.com',
+      
+      // Anime/Specialty Platforms  
+      'Crunchyroll': movieTitle ? `https://www.crunchyroll.com/search?q=${encodedTitle}` : 'https://www.crunchyroll.com',
+      'Funimation': movieTitle ? `https://www.funimation.com/search/?q=${encodedTitle}` : 'https://www.funimation.com',
+      'AnimeLab': movieTitle ? `https://www.animelab.com/search?q=${encodedTitle}` : 'https://www.animelab.com',
+      
+      // Other International
+      'BBC iPlayer': movieTitle ? `https://www.bbc.co.uk/iplayer/search?q=${encodedTitle}` : 'https://www.bbc.co.uk/iplayer',
+      'ITV Hub': movieTitle ? `https://www.itv.com/hub/search?q=${encodedTitle}` : 'https://www.itv.com/hub',
+      'All 4': movieTitle ? `https://www.channel4.com/search?q=${encodedTitle}` : 'https://www.channel4.com',
+      'ITVX': movieTitle ? `https://www.itv.com/watch/search?q=${encodedTitle}` : 'https://www.itv.com/watch',
+      
+      // Aggregators
+      'JustWatch': movieTitle ? `https://www.justwatch.com/us/search?q=${encodedTitle}` : 'https://www.justwatch.com',
+      'Reelgood': movieTitle ? `https://reelgood.com/search?q=${encodedTitle}` : 'https://reelgood.com'
     };
     
     return providerUrls[providerName] || '#';

@@ -3,9 +3,23 @@ const router = express.Router();
 const Movie = require('../models/Movie');
 const tmdbService = require('../services/tmdbService');
 
+// Simple rate limiting for the movies endpoint
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 500; // 500ms between requests
+
 // GET /api/movies - Get all movies (primary endpoint with TMDB integration)
 router.get('/', async (req, res) => {
   try {
+    // Simple rate limiting
+    const now = Date.now();
+    if (now - lastRequestTime < MIN_REQUEST_INTERVAL) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many requests. Please wait before making another request.',
+        retryAfter: MIN_REQUEST_INTERVAL - (now - lastRequestTime)
+      });
+    }
+    lastRequestTime = now;
     const { 
       page = 1, 
       limit = 20, 

@@ -1,6 +1,15 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
+  username: {
+    type: String,
+    required: [true, 'Username is required'],
+    unique: true,
+    trim: true,
+    minlength: [3, 'Username must be at least 3 characters long'],
+    maxlength: [20, 'Username cannot exceed 20 characters']
+  },
   name: {
     type: String,
     required: true,
@@ -11,11 +20,28 @@ const userSchema = new mongoose.Schema({
     required: true,
     unique: true,
     lowercase: true,
-    trim: true
+    trim: true,
+    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+  },
+  password: {
+    type: String,
+    required: [true, 'Password is required'],
+    minlength: [6, 'Password must be at least 6 characters long']
   },
   favorites: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Movie'
+    movieId: {
+      type: String,
+      required: true
+    },
+    title: String,
+    poster: String,
+    rating: Number,
+    year: String,
+    genre: [String],
+    addedAt: {
+      type: Date,
+      default: Date.now
+    }
   }],
   preferences: {
     genres: [{
@@ -43,6 +69,14 @@ const userSchema = new mongoose.Schema({
       max: 5
     }
   }],
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  verificationToken: String,
+  resetPasswordToken: String,
+  resetPasswordExpire: Date,
+  lastLogin: Date,
   createdAt: {
     type: Date,
     default: Date.now
@@ -51,29 +85,112 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for email lookup
+// Indexes for better query performance
 userSchema.index({ email: 1 });
+userSchema.index({ username: 1 });
+userSchema.index({ 'favorites.movieId': 1 });
 
-// Instance method to add movie to favorites
-userSchema.methods.addToFavorites = function(movieId) {
-  if (!this.favorites.includes(movieId)) {
-    this.favorites.push(movieId);
+// Hash password before saving
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
+  
+  try {
+    const salt = await bcrypt.genSalt(12);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    next(error);
   }
+});
+
+// Compare password method
+userSchema.methods.comparePassword = async function(candidatePassword) {
+  try {
+    return await bcrypt.compare(candidatePassword, this.password);
+  } catch (error) {
+    throw new Error('Password comparison failed');
+  }
+};
+
+// Add movie to favorites
+userSchema.methods.addToFavorites = function(movieData) {
+  const existingIndex = this.favorites.findIndex(
+    fav => fav.movieId === movieData.id.toString()
+  );
+  
+  if (existingIndex === -1) {
+    this.favorites.push({
+      movieId: movieData.id.toString(),
+      title: movieData.title,
+      poster: movieData.poster,
+      rating: movieData.rating,
+      year: movieData.year,
+      genre: movieData.genre || []
+    });
+  }
+  
   return this.save();
 };
 
-// Instance method to remove movie from favorites
+// Remove movie from favorites
 userSchema.methods.removeFromFavorites = function(movieId) {
-  this.favorites = this.favorites.filter(fav => !fav.equals(movieId));
+  this.favorites = this.favorites.filter(
+    fav => fav.movieId !== movieId.toString()
+  );
   return this.save();
+};
+
+// Check if movie is in favorites
+userSchema.methods.isFavorite = function(movieId) {
+  return this.favorites.some(fav => fav.movieId === movieId.toString());
+};
+
+// Get user's favorite genres based on their favorites
+userSchema.methods.getFavoriteGenres = function() {
+  const genreCounts = {};
+  
+  // Count genres from favorited movies
+  this.favorites.forEach(movie => {
+    if (movie.genre && Array.isArray(movie.genre)) {
+      movie.genre.forEach(genre => {
+        genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+      });
+    }
+  });
+  
+  // Return top 5 genres
+  return Object.entries(genreCounts)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 5)
+    .map(([genre]) => genre);
+};
+
+// Remove sensitive data when converting to JSON
+userSchema.methods.toJSON = function() {
+  const user = this.toObject();
+  delete user.password;
+  delete user.verificationToken;
+  delete user.resetPasswordToken;
+  delete user.resetPasswordExpire;
+  return user;
+};
+
+// Static method to find user by email or username
+userSchema.statics.findByEmailOrUsername = function(identifier) {
+  return this.findOne({
+    $or: [
+      { email: identifier.toLowerCase() },
+      { username: identifier }
+    ]
+  });
 };
 
 // Instance method to get recommendations based on user preferences
 userSchema.methods.getRecommendations = async function() {
   const Movie = mongoose.model('Movie');
   
-  // Simple recommendation logic based on favorite genres
-  const favoriteGenres = this.preferences.genres || [];
+  // Get favorite genres from user's favorites
+  const favoriteGenres = this.getFavoriteGenres();
   
   if (favoriteGenres.length === 0) {
     // Return popular movies if no preferences
@@ -81,9 +198,11 @@ userSchema.methods.getRecommendations = async function() {
   }
   
   // Find movies in favorite genres that are not in favorites
+  const favoriteMovieIds = this.favorites.map(fav => fav.movieId);
+  
   return await Movie.find({
     genre: { $in: favoriteGenres },
-    _id: { $nin: this.favorites }
+    _id: { $nin: favoriteMovieIds }
   }).sort({ rating: -1 }).limit(10);
 };
 

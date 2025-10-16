@@ -7,6 +7,7 @@ const connectDB = require('./config/database');
 const movieRoutes = require('./routes/movies');
 const userRoutes = require('./routes/users');
 const recommendationRoutes = require('./routes/recommendations');
+const authRoutes = require('./routes/auth');
 
 // Load environment variables
 dotenv.config();
@@ -32,6 +33,7 @@ app.use((req, res, next) => {
 app.use('/api/movies', movieRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/recommendations', recommendationRoutes);
+app.use('/api/auth', authRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -62,9 +64,9 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`\níº€ CineMate Backend Server running on port ${PORT}`);
-  console.log(`í³¡ API endpoints available at http://localhost:${PORT}/api`);
-  console.log(`í¿¥ Health check: http://localhost:${PORT}/api/health\n`);
+  console.log(`\nï¿½ï¿½ï¿½ CineMate Backend Server running on port ${PORT}`);
+  console.log(`ï¿½ï¿½ï¿½ API endpoints available at http://localhost:${PORT}/api`);
+  console.log(`ï¿½ï¿½ï¿½ Health check: http://localhost:${PORT}/api/health\n`);
 });
 
 module.exports = app;

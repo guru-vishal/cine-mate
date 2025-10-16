@@ -1,16 +1,33 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Heart, Star, Play } from 'lucide-react';
 import { useMovie } from '../context/MovieContext';
+import { useAuth } from '../context/AuthContext';
 
 const MovieCard = ({ movie }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { favorites, addToFavorites, removeFromFavorites } = useMovie();
+  const { user } = useAuth();
   const isFavorite = favorites.some(fav => fav.id === movie.id);
 
   const handleFavoriteToggle = (e) => {
     e.preventDefault();
     e.stopPropagation();
     
+    // Check if user is authenticated
+    if (!user) {
+      // Redirect to login page with return URL
+      navigate('/login', { 
+        state: { 
+          from: location.pathname,
+          message: 'Please log in to add movies to your favorites'
+        }
+      });
+      return;
+    }
+
+    // User is authenticated, proceed with favorite toggle
     if (isFavorite) {
       removeFromFavorites(movie.id);
     } else {
