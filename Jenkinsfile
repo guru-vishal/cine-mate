@@ -2,56 +2,53 @@ pipeline {
     agent any
 
     environment {
-    NODE_ENV = 'production'
-    AWS_REGION = 'ap-south-1' // Mumbai region
-}
-
-       
-    tools {
-        nodejs 'NodeJS-18' // Must match configured NodeJS in Jenkins global tools
+        AWS_REGION = 'ap-south-1'
+        TF_HOME    = tool name: 'Terraform', type: 'terraform'
+        PATH       = "${TF_HOME}:${env.PATH}"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                echo 'Checking out code...'
-                checkout scm
+                git(
+                    url: 'https://github.com/guru-vishal/cine-mate.git',
+                    credentialsId: 'github-creds',
+                    branch: 'main'
+                )
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Setup Python Environment') {
             steps {
-                echo 'Installing dependencies...'
-                sh 'npm install'
+                sh '''
+                  python3 -m venv venv
+                  . venv/bin/activate
+                  pip install -r requirements.txt
+                '''
             }
         }
 
-        stage('Run Tests') {
+        stage('Run Unit Tests') {
             steps {
-                echo 'Running tests...'
-                sh 'npm test -- --watchAll=false' // Remove || true to fail on test errors
-            }
-        }
-
-        stage('Build') {
-            steps {
-                echo 'Building application...'
-                sh 'npm run build'
-            }
-        }
-
-        stage('Archive Build') {
-            steps {
-                echo 'Archiving build...'
-                archiveArtifacts artifacts: 'build/', fingerprint: true
+                sh '''
+                  . venv/bin/activate
+                  python3 -m pytest tests/unit/ -v
+                '''
             }
         }
 
         stage('Terraform Init') {
             steps {
                 dir('terraform') {
-                    echo 'Initializing Terraform...'
                     sh 'terraform init'
+                }
+            }
+        }
+
+        stage('Terraform Validate') {
+            steps {
+                dir('terraform') {
+                    sh 'terraform validate'
                 }
             }
         }
@@ -59,18 +56,40 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 dir('terraform') {
-                    echo 'Planning Terraform deployment...'
-                    sh 'terraform plan'
+                    sh 'terraform plan -out=tfplan'
                 }
+            }
+        }
+
+        stage('Approval') {
+            steps {
+                input message: 'Proceed to production deployment?', ok: 'Yes, Deploy'
             }
         }
 
         stage('Terraform Apply') {
             steps {
                 dir('terraform') {
-                    echo 'Applying Terraform deployment...'
-                    sh 'terraform apply -auto-approve'
+                    sh 'terraform apply -auto-approve tfplan'
                 }
+            }
+        }
+
+        stage('Deploy Recommendation Model') {
+            steps {
+                sh '''
+                  . venv/bin/activate
+                  python3 scripts/deploy_model.py
+                '''
+            }
+        }
+
+        stage('Integration Tests') {
+            steps {
+                sh '''
+                  . venv/bin/activate
+                  python3 -m pytest tests/integration/ -v
+                '''
             }
         }
     }
@@ -80,10 +99,18 @@ pipeline {
             cleanWs()
         }
         success {
-            echo '✅ Build, test, and deploy successful!'
+            emailext(
+                subject: "SUCCESS: ${env.JOB_NAME} Build #${env.BUILD_NUMBER}",
+                body: "Deployment succeeded.\nBuild URL: ${env.BUILD_URL}",
+                to: "hemavarnas25@gmail.com"
+            )
         }
         failure {
-            echo '❌ Build, test, or deploy failed!'
+            emailext(
+                subject: "FAILURE: ${env.JOB_NAME} Build #${env.BUILD_NUMBER}",
+                body: "Deployment failed. Check console output.\nBuild URL: ${env.BUILD_URL}",
+                to: "hemavarnas25@gmail.com"
+            )
         }
     }
 }

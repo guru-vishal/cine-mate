@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const connectDB = require('./config/database');
+const logger = require('./utils/logger'); // ✅ custom logger for ELK
 
 // Import routes
 const movieRoutes = require('./routes/movies');
@@ -23,9 +24,14 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Logging middleware
+// ✅ Logging middleware (send to ELK + console)
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  logger.info('API Request', {
+    method: req.method,
+    path: req.path,
+    body: req.body,
+    timestamp: new Date().toISOString()
+  });
   next();
 });
 
@@ -37,6 +43,7 @@ app.use('/api/auth', authRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
+  logger.info('Health check called');
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
@@ -44,8 +51,9 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// 404 handler - Fixed route
+// 404 handler
 app.use((req, res) => {
+  logger.warn('Route not found', { path: req.path });
   res.status(404).json({
     success: false,
     message: 'Route not found'
@@ -54,7 +62,11 @@ app.use((req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
+  logger.error('Server error', {
+    message: err.message,
+    stack: err.stack,
+    path: req.path
+  });
   res.status(500).json({
     success: false,
     message: 'Internal server error',
@@ -64,9 +76,10 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`\n��� CineMate Backend Server running on port ${PORT}`);
-  console.log(`��� API endpoints available at http://localhost:${PORT}/api`);
-  console.log(`��� Health check: http://localhost:${PORT}/api/health\n`);
+  logger.info(`🎬 CineMate Backend Server running on port ${PORT}`);
+  console.log(`\n🎬 CineMate Backend Server running on port ${PORT}`);
+  console.log(`📡 API endpoints available at http://localhost:${PORT}/api`);
+  console.log(`❤️ Health check: http://localhost:${PORT}/api/health\n`);
 });
 
 module.exports = app;
