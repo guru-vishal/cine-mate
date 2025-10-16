@@ -22,7 +22,7 @@ pipeline {
         stage('Install Backend Dependencies') {
             steps {
                 dir("${SERVER_DIR}") {
-                    sh 'npm install'
+                    bat 'npm install'
                 }
             }
         }
@@ -30,7 +30,7 @@ pipeline {
         stage('Install Frontend Dependencies') {
             steps {
                 dir("${CLIENT_DIR}") {
-                    sh 'npm install'
+                    bat 'npm install'
                 }
             }
         }
@@ -38,7 +38,7 @@ pipeline {
         stage('Build Frontend') {
             steps {
                 dir("${CLIENT_DIR}") {
-                    sh 'npm run build'
+                    bat 'npm run build'
                 }
             }
         }
@@ -47,7 +47,7 @@ pipeline {
             steps {
                 dir("${SERVER_DIR}") {
                     // Restart backend using PM2; start if not running
-                    sh "pm2 restart ${BACKEND_ENTRY} || pm2 start ${BACKEND_ENTRY}"
+                    bat "pm2 restart ${BACKEND_ENTRY} || pm2 start ${BACKEND_ENTRY}"
                 }
             }
         }
@@ -57,9 +57,9 @@ pipeline {
         stage('Terraform Apply') {
             steps {
                 dir('infrastructure') { // Folder with your Terraform scripts
-                    sh 'terraform init'
-                    sh 'terraform plan'
-                    sh 'terraform apply -auto-approve'
+                    bat 'terraform init'
+                    bat 'terraform plan'
+                    bat 'terraform apply -auto-approve'
                 }
             }
         }
