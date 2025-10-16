@@ -6,8 +6,8 @@ pipeline {
     }
 
     environment {
-        SERVER_DIR = 'server'   // Your backend folder
-        CLIENT_DIR = 'client'   // Your frontend folder
+        SERVER_DIR = 'backend'   // Your backend folder
+        CLIENT_DIR = 'frontend'   // Your frontend folder
         BACKEND_ENTRY = 'server.js' // Your backend entry file
     }
 
