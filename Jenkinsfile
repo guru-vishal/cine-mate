@@ -15,7 +15,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git url: 'https://github.com/guru-vishal/cine-mate.git', branch: 'main'
+                git url: 'https://github.com/guru-vishal/cine-mate.git', branch: 'master'
             }
         }
 
