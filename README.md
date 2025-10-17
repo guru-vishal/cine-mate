@@ -2,7 +2,7 @@
 
 A modern, responsive movie recommendation platform built with the MERN stack (MongoDB, Express.js, React.js, Node.js) integrated with TMDB API for real-time movie data.
 
-![CineMate Preview](https://via.placeholder.com/800x400/ef4444/ffffff?text=CineMate+Movie+App)
+![CineMate Preview](https://cine-mate-ashy.vercel.app/)
 
 ## ✨ Features
 
