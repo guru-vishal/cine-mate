@@ -227,9 +227,9 @@ app.listen(PORT, async () => {
   console.log(`❤️ Health check: http://localhost:${PORT}/api/health`);
   
   // Test TMDB integration after server starts
-  setTimeout(() => {
-    testTMDBIntegration();
-  }, 2000);
+  // setTimeout(() => {
+  //   testTMDBIntegration();
+  // }, 2000);
 });
 
 module.exports = app;
