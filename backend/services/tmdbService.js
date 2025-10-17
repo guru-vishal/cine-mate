@@ -1,172 +1,1083 @@
-// Mock TMDB Service for testing favorites functionality
-// Returns data in TMDB API format
-
-const mockMovies = [
-  {
-    id: 550,
-    title: "Fight Club",
-    overview: "A ticking-time-bomb insomniac and a slippery soap salesman channel primal male aggression into a shocking new form of therapy.",
-    poster_path: "/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg",
-    backdrop_path: "/fCayJrkfRaCRCTh8GqN30f8oyQF.jpg", 
-    release_date: "1999-10-15",
-    vote_average: 8.433,
-    genre_ids: [18, 53],
-    adult: false,
-    video: false,
-    vote_count: 26280
-  },
-  {
-    id: 13,
-    title: "Forrest Gump", 
-    overview: "A man with a low IQ has accomplished great things in his life and been present during significant historic events—in each case, far exceeding what anyone imagined he could do.",
-    poster_path: "/arw2vcBveWOVZr6pxd9XTd1TdQa.jpg",
-    backdrop_path: "/3h1JZGDhZ8nzxdgvkxha0qBqi05.jpg",
-    release_date: "1994-06-23", 
-    vote_average: 8.471,
-    genre_ids: [35, 18, 10749],
-    adult: false,
-    video: false,
-    vote_count: 24870
-  },
-  {
-    id: 680,
-    title: "Pulp Fiction",
-    overview: "A burger-loving hit man, his philosophical partner, a drug-addled gangster's moll and a washed-up boxer converge in this sprawling, comedic crime caper.",
-    poster_path: "/d5iIlFn5s0ImszYzBPb8JPIfbXD.jpg",
-    backdrop_path: "/4cDFJr4HnXN5AdPw4AKrmLlMWdO.jpg",
-    release_date: "1994-09-10",
-    vote_average: 8.488,
-    genre_ids: [53, 80],
-    adult: false,
-    video: false,
-    vote_count: 25622
-  },
-  {
-    id: 238,
-    title: "The Shawshank Redemption",
-    overview: "Framed in the 1940s for the double murder of his wife and her lover, upstanding banker Andy Dufresne begins a new life at the Shawshank prison, where he puts his accounting skills to work for an amoral warden.",
-    poster_path: "/q6y0Go1tsGEsmtFryDOJo3dEmqu.jpg",
-    backdrop_path: "/iNh3BivHyg5sQRPP1KOkzguEX0H.jpg",
-    release_date: "1994-09-23",
-    vote_average: 8.707,
-    genre_ids: [18, 80],
-    adult: false,
-    video: false,
-    vote_count: 24871
-  },
-  {
-    id: 424,
-    title: "Schindler's List",
-    overview: "The true story of how businessman Oskar Schindler saved over a thousand Jewish lives from the Nazis while they worked as slaves in his factory during World War II.",
-    poster_path: "/sF1U4EUQS8YHUYjNl3pMGNIQyr0.jpg",
-    backdrop_path: "/loRmRzQXZeqG78TqZuyvSlEQfZb.jpg",
-    release_date: "1993-12-15",
-    vote_average: 8.565,
-    genre_ids: [18, 36, 10752],
-    adult: false,
-    video: false,
-    vote_count: 13701
-  }
-];
+// Real TMDB Service with API integration
+// Fetches data from The Movie Database API
+const axios = require('axios');
+require('dotenv').config();
 
 class TMDBService {
-  async getPopularMovies(page = 1) {
-    // Return paginated mock data in TMDB format
-    const startIndex = (page - 1) * 20;
-    return {
-      results: mockMovies.slice(startIndex, startIndex + 20),
-      page: page,
-      total_pages: Math.ceil(mockMovies.length / 20),
-      total_results: mockMovies.length
-    };
+  constructor() {
+    this.initialize();
   }
 
-  async getTopRatedMovies(page = 1) {
-    const sorted = [...mockMovies].sort((a, b) => b.vote_average - a.vote_average);
-    const startIndex = (page - 1) * 20;
-    return {
-      results: sorted.slice(startIndex, startIndex + 20),
-      page: page,
-      total_pages: Math.ceil(sorted.length / 20),
-      total_results: sorted.length
-    };
+  initialize() {
+    // Re-read environment variables (in case .env was added after startup)
+    require('dotenv').config();
+    
+    this.apiKey = process.env.TMDB_API_KEY || "a89d4383c95ae47cca1109edd48d79a6";
+    this.baseURL = process.env.TMDB_BASE_URL || 'https://api.themoviedb.org/3';
+    
+    // Check if it's a Bearer token (JWT) or API key
+    const isBearerToken = this.apiKey && this.apiKey.startsWith('eyJ');
+    
+    if (isBearerToken) {
+      // Use Bearer token authentication (v4 API)
+      this.api = axios.create({
+        baseURL: this.baseURL,
+        timeout: 10000,
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      console.log('TMDB Service initialized with Bearer Token:', this.apiKey ? 'Present' : 'Missing');
+    } else {
+      // Use API key authentication (v3 API)
+      this.api = axios.create({
+        baseURL: this.baseURL,
+        timeout: 10000,
+        params: {
+          api_key: this.apiKey
+        }
+      });
+      console.log('TMDB Service initialized with API Key:', this.apiKey ? 'Present' : 'Missing');
+    }
   }
 
-  async getNowPlayingMovies(page = 1) {
-    return this.getPopularMovies(page);
+  // Get single page of popular movies (internal helper function)
+  async getPopularMoviesByPage(page = 1) {
+    try {
+      const response = await this.api.get('/movie/popular', {
+        params: { page }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('TMDB Popular Movies Error:', error.message);
+      return this.getFallbackData(page);
+    }
+  }
+
+  // Get top 100 popular movies with runtime data
+  async getPopularMovies() {
+    try {
+      console.log('🔥 Fetching top 100 popular movies...');
+      const allMovies = [];
+      
+      // Fetch first 5 pages to get 100 movies (20 per page)
+      for (let page = 1; page <= 5; page++) {
+        const response = await this.getPopularMoviesByPage(page);
+        if (response && response.results) {
+          allMovies.push(...response.results);
+        }
+      }
+      
+      console.log(`✅ Fetched ${allMovies.length} popular movies`);
+      
+      // Enrich with runtime data (process first 20 movies to avoid too many API calls)
+      const moviesToEnrich = allMovies.slice(0, 20);
+      const remainingMovies = allMovies.slice(20);
+      
+      const enrichedMovies = await this.enrichMoviesWithRuntime(moviesToEnrich, {
+        maxConcurrent: 3, // Conservative to avoid rate limits
+        delayMs: 200      // 200ms delay between batches
+      });
+      
+      // Combine enriched movies with remaining movies
+      const finalMovies = [...enrichedMovies, ...remainingMovies];
+      
+      return {
+        results: finalMovies,
+        total_results: finalMovies.length,
+        total_pages: 5,
+        page: 1
+      };
+    } catch (error) {
+      console.error('Error fetching top 100 popular movies:', error.message);
+      return {
+        results: [],
+        total_results: 0,
+        total_pages: 0,
+        page: 1
+      };
+    }
+  }
+
+  // Get single page of top-rated movies (internal helper function)
+  async getTopRatedMoviesByPage(page = 1) {
+    try {
+      console.log(`🔍 TMDB: Fetching top-rated movies page ${page}...`);
+      const response = await this.api.get('/movie/top_rated', {
+        params: { page }
+      });
+      
+      const data = response.data;
+      console.log(`📊 TMDB Response for top-rated page ${page}:`, {
+        total_results: data.total_results,
+        total_pages: data.total_pages,
+        current_page: data.page,
+        results_count: data.results?.length || 0,
+        sample_titles: data.results?.slice(0, 3)?.map(m => `${m.title} (${m.vote_average})`) || []
+      });
+      
+      return data;
+    } catch (error) {
+      console.error('TMDB Top Rated Movies Error:', error.message);
+      return this.getFallbackData(page);
+    }
+  }
+
+  // Get top 100 rated movies (main function - returns all 100 movies)
+  async getTopRatedMovies() {
+    try {
+      console.log('🏆 Fetching top 100 rated movies...');
+      const allMovies = [];
+      
+      // Fetch first 5 pages to get 100 movies (20 per page)
+      for (let page = 1; page <= 5; page++) {
+        const response = await this.getTopRatedMoviesByPage(page);
+        if (response && response.results) {
+          allMovies.push(...response.results);
+        }
+      }
+      
+      console.log(`✅ Fetched ${allMovies.length} top-rated movies`);
+      
+      // Enrich with runtime data (process first 20 movies to avoid too many API calls)
+      const moviesToEnrich = allMovies.slice(0, 20);
+      const remainingMovies = allMovies.slice(20);
+      
+      const enrichedMovies = await this.enrichMoviesWithRuntime(moviesToEnrich, {
+        maxConcurrent: 3, // Conservative to avoid rate limits
+        delayMs: 200      // 200ms delay between batches
+      });
+      
+      // Combine enriched movies with remaining movies
+      const finalMovies = [...enrichedMovies, ...remainingMovies];
+      
+      return {
+        results: finalMovies,
+        total_results: finalMovies.length,
+        total_pages: 5,
+        page: 1
+      };
+    } catch (error) {
+      console.error('Error fetching top 100 rated movies:', error.message);
+      return {
+        results: [],
+        total_results: 0,
+        total_pages: 0,
+        page: 1
+      };
+    }
+  }
+
+  // Log top 100 rated movies titles
+  async logTop100RatedMovies() {
+    try {
+      console.log('🏆 Fetching top 100 rated movies...');
+      const allMovies = [];
+      
+      // Fetch first 5 pages to get 100 movies (20 per page)
+      for (let page = 1; page <= 5; page++) {
+        const response = await this.getTopRatedMoviesByPage(page);
+        if (response && response.results) {
+          allMovies.push(...response.results);
+        }
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      console.log('\n🎬 TOP 100 RATED MOVIES:');
+      console.log('=' .repeat(80));
+      
+      allMovies.slice(0, 100).forEach((movie, index) => {
+        console.log(`${(index + 1).toString().padStart(3)}. ${movie.title} (${movie.vote_average}⭐) - ${movie.release_date?.substring(0, 4) || 'Unknown'}`);
+      });
+      
+      console.log('=' .repeat(80));
+      console.log(`✅ Logged ${Math.min(allMovies.length, 100)} top-rated movies\n`);
+      
+      return allMovies.slice(0, 100);
+    } catch (error) {
+      console.error('❌ Error logging top 100 movies:', error.message);
+      return [];
+    }
+  }
+
+  // Log top 100 popular movies titles
+  async logTop100PopularMovies() {
+    try {
+      console.log('🔥 Fetching top 100 popular movies...');
+      const allMovies = [];
+      
+      // Fetch first 5 pages to get 100 movies (20 per page)
+      for (let page = 1; page <= 5; page++) {
+        const response = await this.getPopularMoviesByPage(page);
+        if (response && response.results) {
+          allMovies.push(...response.results);
+        }
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      console.log('\n🔥 TOP 100 POPULAR MOVIES:');
+      console.log('=' .repeat(80));
+      
+      allMovies.slice(0, 100).forEach((movie, index) => {
+        console.log(`${(index + 1).toString().padStart(3)}. ${movie.title} (${movie.vote_average}⭐) - ${movie.release_date?.substring(0, 4) || 'Unknown'}`);
+      });
+      
+      console.log('=' .repeat(80));
+      console.log(`✅ Logged ${Math.min(allMovies.length, 100)} popular movies\n`);
+      
+      return allMovies.slice(0, 100);
+    } catch (error) {
+      console.error('❌ Error logging top 100 popular movies:', error.message);
+      return [];
+    }
   }
 
   async getUpcomingMovies(page = 1) {
-    return this.getPopularMovies(page);
+    try {
+      const response = await this.api.get('/movie/upcoming', {
+        params: { page }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('TMDB Upcoming Movies Error:', error.message);
+      return this.getFallbackData(page);
+    }
   }
 
   async getMixedMovies(limit = 20) {
-    return mockMovies.slice(0, limit);
+    try {
+      console.log(`🎭 Fetching mixed movies with runtime data (limit: ${limit})...`);
+      
+      // Get a mix of popular and top rated movies
+      const [popular, topRated] = await Promise.all([
+        this.getPopularMoviesByPage(1),
+        this.getTopRatedMoviesByPage(1)
+      ]);
+      
+      const mixed = [];
+      const popularMovies = popular.results || [];
+      const topRatedMovies = topRated.results || [];
+      
+      // Alternate between popular and top rated
+      for (let i = 0; i < Math.min(limit, 20); i++) {
+        if (i % 2 === 0 && popularMovies[Math.floor(i/2)]) {
+          mixed.push(popularMovies[Math.floor(i/2)]);
+        } else if (topRatedMovies[Math.floor(i/2)]) {
+          mixed.push(topRatedMovies[Math.floor(i/2)]);
+        }
+      }
+      
+      const finalMovies = mixed.slice(0, limit);
+      
+      // Enrich with runtime data for better duration display
+      console.log(`🕐 Enriching ${finalMovies.length} mixed movies with runtime data...`);
+      const enrichedMovies = await this.enrichMoviesWithRuntime(finalMovies, {
+        maxConcurrent: 5, // Can be more aggressive for smaller batches
+        delayMs: 100      // Shorter delay for small batches
+      });
+      
+      return enrichedMovies;
+    } catch (error) {
+      console.error('TMDB Mixed Movies Error:', error.message);
+      // Return empty results if TMDB fails
+      return [];
+    }
   }
 
   async searchMovies(query, page = 1) {
-    const filtered = mockMovies.filter(movie => 
-      movie.title.toLowerCase().includes(query.toLowerCase()) ||
-      movie.overview.toLowerCase().includes(query.toLowerCase())
-    );
-    
-    const startIndex = (page - 1) * 20;
-    return {
-      results: filtered.slice(startIndex, startIndex + 20),
-      page: page,
-      total_pages: Math.ceil(filtered.length / 20),
-      total_results: filtered.length
-    };
+    try {
+      // Reinitialize if API key is missing (handles case where .env was added after startup)
+      if (!this.apiKey) {
+        console.log('🔄 API key missing, reinitializing TMDB service...');
+        this.initialize();
+      }
+      
+      const response = await this.api.get('/search/movie', {
+        params: { 
+          query: query,
+          page: page
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('TMDB Search Error:', error.message);
+      
+      // If it's a 401 error, try reinitializing once
+      if (error.response && error.response.status === 401 && !this.hasTriedReinit) {
+        console.log('🔄 401 error, trying to reinitialize TMDB service...');
+        this.hasTriedReinit = true;
+        this.initialize();
+        
+        try {
+          const retryResponse = await this.api.get('/search/movie', {
+            params: { 
+              query: query,
+              page: page
+            }
+          });
+          this.hasTriedReinit = false; // Reset flag on success
+          return retryResponse.data;
+        } catch (retryError) {
+          console.error('TMDB Search Retry Error:', retryError.message);
+        }
+      }
+      
+      // Return empty results if TMDB fails
+      return {
+        results: [],
+        page: page,
+        total_pages: 0,
+        total_results: 0
+      };
+    }
+  }
+
+  // Progressive search that yields results as they're found
+  async* searchMoviesProgressive(query, callback = null) {
+    try {
+      console.log(`🔍 Progressive search for: "${query}"`);
+      
+      // First, get the first page to see total pages available and yield immediately
+      const firstResponse = await this.searchMovies(query, 1);
+      console.log(`📊 First page response:`, {
+        results: firstResponse.results?.length || 0,
+        total_pages: firstResponse.total_pages,
+        total_results: firstResponse.total_results
+      });
+      
+      if (!firstResponse.results || firstResponse.results.length === 0) {
+        console.log(`❌ No results found for "${query}"`);
+        yield firstResponse;
+        return;
+      }
+      
+      // Yield first page immediately
+      yield {
+        results: firstResponse.results,
+        total_results: firstResponse.total_results,
+        total_pages: firstResponse.total_pages,
+        current_page: 1,
+        is_complete: firstResponse.total_pages <= 1
+      };
+      
+      // If there's only one page, we're done
+      if (firstResponse.total_pages <= 1) {
+        return;
+      }
+      
+      const totalPages = Math.min(firstResponse.total_pages, 30); // Limit to 30 pages max
+      console.log(`📄 Will fetch ${totalPages - 1} additional pages`);
+      
+      // Fetch remaining pages and yield results progressively
+      for (let page = 2; page <= totalPages; page++) {
+        try {
+          console.log(`📥 Fetching page ${page}/${totalPages}...`);
+          const pageResponse = await this.searchMovies(query, page);
+          
+          if (pageResponse.results && pageResponse.results.length > 0) {
+            console.log(`✅ Page ${page}: ${pageResponse.results.length} results`);
+            
+            // Yield this page's results
+            yield {
+              results: pageResponse.results,
+              total_results: firstResponse.total_results,
+              total_pages: firstResponse.total_pages,
+              current_page: page,
+              is_complete: page === totalPages
+            };
+            
+            // Call callback if provided (for real-time updates)
+            if (callback) {
+              callback(pageResponse.results, page, totalPages);
+            }
+          } else {
+            console.log(`⚠️ Page ${page}: No results`);
+          }
+          
+          // Add delay between requests to avoid rate limiting
+          if (page < totalPages) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+          
+        } catch (pageError) {
+          console.error(`❌ Error fetching page ${page}:`, pageError.message);
+          // Continue with next page instead of failing completely
+        }
+      }
+      
+      console.log(`✅ Progressive search complete for "${query}"`);
+      
+    } catch (error) {
+      console.error('Progressive search error:', error.message);
+      // Fallback to single page search
+      console.log('🔄 Falling back to single page search...');
+      const fallback = await this.searchMovies(query, 1);
+      yield {
+        results: fallback.results || [],
+        total_results: fallback.total_results || 0,
+        total_pages: 1,
+        current_page: 1,
+        is_complete: true
+      };
+    }
+  }
+
+  // Progressive movie collection that yields results as they're found
+  async* getMoviesProgressive(callback = null) {
+    try {
+      console.log(`🎬 Progressive movie collection starting...`);
+      
+      // Start with popular movies for immediate results
+      console.log(`📥 Fetching popular movies (page 1)...`);
+      const firstResponse = await this.getPopularMoviesByPage(1);
+      
+      if (firstResponse.results && firstResponse.results.length > 0) {
+        console.log(`✅ First batch: ${firstResponse.results.length} popular movies`);
+        
+        // Yield first batch immediately
+        yield {
+          results: firstResponse.results,
+          source: 'popular',
+          page: 1,
+          is_complete: false
+        };
+      }
+      
+      // Continue with more popular movies (increased from 25 to 50 pages)
+      for (let page = 2; page <= 50; page++) {
+        try {
+          console.log(`📥 Fetching popular movies (page ${page})...`);
+          const pageResponse = await this.getPopularMoviesByPage(page);
+          
+          if (pageResponse.results && pageResponse.results.length > 0) {
+            console.log(`✅ Popular page ${page}: ${pageResponse.results.length} movies`);
+            
+            yield {
+              results: pageResponse.results,
+              source: 'popular',
+              page: page,
+              is_complete: false
+            };
+            
+            if (callback) callback(pageResponse.results, 'popular', page);
+          }
+          
+          // Add delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+        } catch (pageError) {
+          console.error(`❌ Error fetching popular page ${page}:`, pageError.message);
+        }
+      }
+      
+      // Then add top-rated movies (increased from 25 to 50 pages)
+      for (let page = 1; page <= 50; page++) {
+        try {
+          console.log(`📥 Fetching top-rated movies (page ${page})...`);
+          const pageResponse = await this.getTopRatedMoviesByPage(page);
+          
+          if (pageResponse.results && pageResponse.results.length > 0) {
+            console.log(`✅ Top-rated page ${page}: ${pageResponse.results.length} movies`);
+            
+            yield {
+              results: pageResponse.results,
+              source: 'top_rated',
+              page: page,
+              is_complete: false
+            };
+            
+            if (callback) callback(pageResponse.results, 'top_rated', page);
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+        } catch (pageError) {
+          console.error(`❌ Error fetching top-rated page ${page}:`, pageError.message);
+        }
+      }
+      
+      // Finally add upcoming movies
+      const additionalSources = [
+        { method: this.getUpcomingMovies.bind(this), name: 'upcoming' }
+      ];
+      
+      for (const source of additionalSources) {
+        for (let page = 1; page <= 50; page++) {
+          try {
+            console.log(`📥 Fetching ${source.name} movies (page ${page})...`);
+            const pageResponse = await source.method(page);
+            
+            if (pageResponse.results && pageResponse.results.length > 0) {
+              console.log(`✅ ${source.name} page ${page}: ${pageResponse.results.length} movies`);
+              
+              yield {
+                results: pageResponse.results,
+                source: source.name,
+                page: page,
+                is_complete: false
+              };
+              
+              if (callback) callback(pageResponse.results, source.name, page);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+          } catch (pageError) {
+            console.error(`❌ Error fetching ${source.name} page ${page}:`, pageError.message);
+          }
+        }
+      }
+      
+      // Mark as complete
+      console.log(`✅ Progressive movie collection complete`);
+      yield {
+        results: [],
+        source: 'complete',
+        page: 0,
+        is_complete: true
+      };
+      
+    } catch (error) {
+      console.error('Progressive movie collection error:', error.message);
+      // Fallback to basic popular movies
+      console.log('🔄 Falling back to basic popular movies...');
+      const fallback = await this.getPopularMoviesByPage(1);
+      yield {
+        results: fallback.results || [],
+        source: 'fallback',
+        page: 1,
+        is_complete: true
+      };
+    }
+  }
+
+  // Search all movies across multiple pages for comprehensive results
+  async searchAllMovies(query) {
+    try {
+      console.log(`🔍 Comprehensive search for: "${query}"`);
+      
+      // First, get the first page to see total pages available
+      const firstResponse = await this.searchMovies(query, 1);
+      console.log(`📊 First page response:`, {
+        results: firstResponse.results?.length || 0,
+        total_pages: firstResponse.total_pages,
+        total_results: firstResponse.total_results
+      });
+      
+      if (!firstResponse.results || firstResponse.results.length === 0) {
+        console.log(`❌ No results found for "${query}"`);
+        return firstResponse;
+      }
+      
+      const totalPages = Math.min(firstResponse.total_pages || 1, 30); // Increase to 30 pages max (600 results)
+      const allResults = [...firstResponse.results];
+      
+      console.log(`📄 Will fetch ${totalPages} pages total (${firstResponse.total_results} results available)`);
+      
+      // If there's only one page, return immediately
+      if (totalPages <= 1) {
+        console.log(`✅ Single page result: ${allResults.length} movies`);
+        return {
+          results: allResults,
+          total_results: allResults.length,
+          total_pages: 1,
+          page: 1
+        };
+      }
+      
+      // Fetch remaining pages sequentially to avoid rate limiting issues
+      console.log(`� Fetching pages 2 to ${totalPages}...`);
+      
+      for (let page = 2; page <= totalPages; page++) {
+        try {
+          console.log(`� Fetching page ${page}/${totalPages}...`);
+          const pageResponse = await this.searchMovies(query, page);
+          
+          if (pageResponse.results && pageResponse.results.length > 0) {
+            allResults.push(...pageResponse.results);
+            console.log(`✅ Page ${page}: ${pageResponse.results.length} results (total: ${allResults.length})`);
+          } else {
+            console.log(`⚠️ Page ${page}: No results`);
+          }
+          
+          // Add delay between requests to avoid rate limiting
+          if (page < totalPages) {
+            await new Promise(resolve => setTimeout(resolve, 250));
+          }
+          
+        } catch (pageError) {
+          console.error(`❌ Error fetching page ${page}:`, pageError.message);
+          // Continue with next page instead of failing completely
+        }
+      }
+      
+      console.log(`✅ Comprehensive search complete: ${allResults.length} total results from ${totalPages} pages`);
+      
+      return {
+        results: allResults,
+        total_results: allResults.length,
+        total_pages: 1, // Return as single page since we're combining all results
+        page: 1
+      };
+      
+    } catch (error) {
+      console.error('Comprehensive search error:', error.message);
+      // Fallback to single page search
+      console.log('🔄 Falling back to single page search...');
+      return await this.searchMovies(query, 1);
+    }
   }
 
   async getGenres() {
-    return [
-      { id: 28, name: "Action" },
-      { id: 12, name: "Adventure" },
-      { id: 16, name: "Animation" },
-      { id: 35, name: "Comedy" },
-      { id: 80, name: "Crime" },
-      { id: 99, name: "Documentary" },
-      { id: 18, name: "Drama" },
-      { id: 10751, name: "Family" },
-      { id: 14, name: "Fantasy" },
-      { id: 36, name: "History" },
-      { id: 27, name: "Horror" },
-      { id: 10402, name: "Music" },
-      { id: 9648, name: "Mystery" },
-      { id: 10749, name: "Romance" },
-      { id: 878, name: "Science Fiction" },
-      { id: 10770, name: "TV Movie" },
-      { id: 53, name: "Thriller" },
-      { id: 10752, name: "War" },
-      { id: 37, name: "Western" }
-    ];
+    try {
+      const response = await this.api.get('/genre/movie/list');
+      return response.data.genres;
+    } catch (error) {
+      console.error('TMDB Genres Error:', error.message);
+      // Fallback to static genres
+      return [
+        { id: 28, name: "Action" },
+        { id: 12, name: "Adventure" },
+        { id: 16, name: "Animation" },
+        { id: 35, name: "Comedy" },
+        { id: 80, name: "Crime" },
+        { id: 99, name: "Documentary" },
+        { id: 18, name: "Drama" },
+        { id: 10751, name: "Family" },
+        { id: 14, name: "Fantasy" },
+        { id: 36, name: "History" },
+        { id: 27, name: "Horror" },
+        { id: 10402, name: "Music" },
+        { id: 9648, name: "Mystery" },
+        { id: 10749, name: "Romance" },
+        { id: 878, name: "Science Fiction" },
+        { id: 10770, name: "TV Movie" },
+        { id: 53, name: "Thriller" },
+        { id: 10752, name: "War" },
+        { id: 37, name: "Western" }
+      ];
+    }
   }
 
   async getMoviesByGenre(genreId, page = 1) {
-    const filtered = mockMovies.filter(movie => 
-      movie.genre_ids.includes(parseInt(genreId))
-    );
-    
-    const startIndex = (page - 1) * 20;
-    return {
-      results: filtered.slice(startIndex, startIndex + 20),
-      page: page,
-      total_pages: Math.ceil(filtered.length / 20),
-      total_results: filtered.length
-    };
+    try {
+      const response = await this.api.get('/discover/movie', {
+        params: { 
+          with_genres: genreId,
+          page: page
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('TMDB Movies by Genre Error:', error.message);
+      return this.getFallbackData(page);
+    }
   }
 
   async getSimilarMovies(movieId, page = 1) {
-    return this.getPopularMovies(page);
+    try {
+      const response = await this.api.get(`/movie/${movieId}/similar`, {
+        params: { page }
+      });
+      return response.data.results || [];
+    } catch (error) {
+      console.error('TMDB Similar Movies Error:', error.message);
+      return (await this.getPopularMoviesByPage(page)).results || [];
+    }
   }
 
   async getMovieRecommendations(movieId, page = 1) {
-    return this.getPopularMovies(page);
+    try {
+      const response = await this.api.get(`/movie/${movieId}/recommendations`, {
+        params: { page }
+      });
+      return response.data.results || [];
+    } catch (error) {
+      console.error('TMDB Movie Recommendations Error:', error.message);
+      return (await this.getPopularMoviesByPage(page)).results || [];
+    }
   }
 
   async getMovieDetails(movieId) {
-    return mockMovies.find(movie => movie.id === parseInt(movieId)) || mockMovies[0];
+    try {
+      const response = await this.api.get(`/movie/${movieId}`);
+      return response.data;
+    } catch (error) {
+      console.error('TMDB Movie Details Error:', error.message);
+      // Return null if movie not found
+      return null;
+    }
+  }
+
+  // Enrich movies with runtime data (batch processing with rate limiting)
+  async enrichMoviesWithRuntime(movies, options = {}) {
+    const { maxConcurrent = 5, delayMs = 100 } = options;
+    
+    console.log(`🕐 Enriching ${movies.length} movies with runtime data...`);
+    
+    const enrichedMovies = [];
+    
+    // Process movies in batches to avoid rate limiting
+    for (let i = 0; i < movies.length; i += maxConcurrent) {
+      const batch = movies.slice(i, i + maxConcurrent);
+      
+      const batchPromises = batch.map(async (movie) => {
+        try {
+          const details = await this.getMovieDetails(movie.id);
+          if (details && details.runtime) {
+            return {
+              ...movie,
+              runtime: details.runtime, // Add runtime in minutes
+              status: details.status,
+              tagline: details.tagline
+            };
+          }
+          return movie; // Return original if no runtime found
+        } catch (error) {
+          console.warn(`Failed to get runtime for movie ${movie.id}:`, error.message);
+          return movie; // Return original on error
+        }
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      enrichedMovies.push(...batchResults);
+      
+      // Add delay between batches to respect rate limits
+      if (i + maxConcurrent < movies.length) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+      
+      console.log(`📊 Processed ${Math.min(i + maxConcurrent, movies.length)}/${movies.length} movies`);
+    }
+    
+    const moviesWithRuntime = enrichedMovies.filter(m => m.runtime);
+    console.log(`✅ Successfully enriched ${moviesWithRuntime.length}/${movies.length} movies with runtime data`);
+    
+    return enrichedMovies;
+  }
+
+  async getMovieCredits(movieId) {
+    try {
+      const response = await this.api.get(`/movie/${movieId}/credits`);
+      return response.data;
+    } catch (error) {
+      console.error('TMDB Movie Credits Error:', error.message);
+      return { cast: [], crew: [] };
+    }
+  }
+
+  // Get comprehensive movie list for search functionality
+  async getAllMoviesForSearch() {
+    try {
+      console.log('Fetching comprehensive movie list for search...');
+      
+      // Fetch multiple categories and pages for a comprehensive movie list
+      const [
+        popularPage1, popularPage2, popularPage3,
+        topRatedPage1, topRatedPage2,
+        nowPlayingPage1, nowPlayingPage2,
+        upcomingPage1
+      ] = await Promise.allSettled([
+        this.getPopularMoviesByPage(1),
+        this.getPopularMoviesByPage(2), 
+        this.getPopularMoviesByPage(3),
+        this.getTopRatedMoviesByPage(1),
+        this.getTopRatedMoviesByPage(2),
+        this.getUpcomingMovies(1)
+      ]);
+
+      // Collect all successful results
+      const allResults = [];
+      const responses = [
+        popularPage1, popularPage2, popularPage3,
+        topRatedPage1, topRatedPage2,
+        upcomingPage1
+      ];
+
+      responses.forEach(response => {
+        if (response.status === 'fulfilled' && response.value && response.value.results) {
+          allResults.push(...response.value.results);
+        }
+      });
+
+      // Remove duplicates based on movie ID
+      const uniqueMovies = [];
+      const seenIds = new Set();
+      
+      allResults.forEach(movie => {
+        if (!seenIds.has(movie.id)) {
+          seenIds.add(movie.id);
+          uniqueMovies.push(movie);
+        }
+      });
+
+      console.log(`Fetched ${uniqueMovies.length} unique movies for search`);
+      return uniqueMovies;
+      
+    } catch (error) {
+      console.error('Error fetching comprehensive movie list:', error.message);
+      // Enhanced fallback strategy
+      try {
+        // First try popular movies
+        const fallback = await this.getPopularMoviesByPage(1);
+        if (fallback.results && fallback.results.length > 0) {
+          return fallback.results;
+        }
+      } catch (fallbackError) {
+        console.log('TMDB fallback also failed, using database fallback');
+      }
+      
+      // If TMDB completely fails, return database movies
+      return this.getFallbackData(1);
+    }
+  }
+
+  // Get extensive movie collection for home page (2000 movies target)
+  async getExtensiveMovieCollection() {
+    try {
+      console.log('🎬 Starting extensive movie collection fetch (targeting 3000 movies)...');
+      
+      const allMovies = [];
+      const seenIds = new Set();
+      const targetMovies = 3000; // Increased from 2000 to get even more movies
+      const concurrent = 10; // Increase concurrent requests for faster loading
+      
+      // Strategy 1: Use discover endpoint with different configurations
+      const discoverConfigs = [
+        { sort_by: 'popularity.desc' },
+        { sort_by: 'vote_average.desc', 'vote_count.gte': 100 },
+        { sort_by: 'release_date.desc' },
+        { sort_by: 'revenue.desc', 'revenue.gte': 1000000 },
+        { sort_by: 'primary_release_date.desc' },
+        { sort_by: 'vote_count.desc' }
+      ];
+      
+      // Fetch 50 pages from each configuration
+      const pagesPerConfig = 50;
+      
+      for (const [configIndex, config] of discoverConfigs.entries()) {
+        console.log(`📡 Config ${configIndex + 1}/${discoverConfigs.length}: ${config.sort_by}`);
+        
+        for (let i = 0; i < pagesPerConfig; i += concurrent) {
+          const pagePromises = [];
+          
+          for (let j = 0; j < concurrent && (i + j) < pagesPerConfig; j++) {
+            const page = i + j + 1;
+            pagePromises.push(this.discoverMovies(page, config));
+          }
+          
+          const results = await Promise.allSettled(pagePromises);
+          
+          results.forEach((result, index) => {
+            if (result.status === 'fulfilled' && result.value && result.value.results) {
+              const currentPage = i + index + 1;
+              const newMovies = result.value.results.filter(movie => !seenIds.has(movie.id));
+              
+              newMovies.forEach(movie => {
+                seenIds.add(movie.id);
+                allMovies.push(movie);
+              });
+              
+              console.log(`📄 Config ${configIndex + 1} Page ${currentPage}: +${newMovies.length} new movies (total: ${allMovies.length})`);
+            }
+          });
+          
+          // Add delay to avoid rate limiting
+          if (i + concurrent < pagesPerConfig) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+          
+          // Stop if we've reached our target
+          if (allMovies.length >= targetMovies) {
+            console.log(`🎯 Target reached! ${allMovies.length} movies collected`);
+            return allMovies;
+          }
+        }
+        
+        console.log(`✅ Config ${configIndex + 1} complete: ${allMovies.length} total movies`);
+        
+        // Brief pause between configurations
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      console.log(`🎬 Final result: ${allMovies.length} unique movies collected`);
+      
+      // If still not enough, try additional endpoints
+      if (allMovies.length < targetMovies) {
+        console.log(`🔄 Still need ${targetMovies - allMovies.length} more movies, trying additional endpoints...`);
+        
+        const additionalEndpoints = [
+          { name: 'Popular', method: this.getPopularMovies.bind(this) },
+          { name: 'Top Rated', method: this.getTopRatedMovies.bind(this) },
+          { name: 'Upcoming', method: this.getUpcomingMovies.bind(this) }
+        ];
+        
+        for (const endpoint of additionalEndpoints) {
+          if (allMovies.length >= targetMovies) break;
+          
+          for (let page = 1; page <= 20 && allMovies.length < targetMovies; page++) {
+            try {
+              const response = await endpoint.method(page);
+              if (response && response.results) {
+                const newMovies = response.results.filter(movie => !seenIds.has(movie.id));
+                newMovies.forEach(movie => {
+                  seenIds.add(movie.id);
+                  allMovies.push(movie);
+                });
+                console.log(`📄 ${endpoint.name} Page ${page}: +${newMovies.length} new (total: ${allMovies.length})`);
+              }
+              await new Promise(resolve => setTimeout(resolve, 100));
+            } catch (error) {
+              console.error(`Error fetching ${endpoint.name} page ${page}:`, error.message);
+            }
+          }
+        }
+      }
+      
+      console.log(`🏆 FINAL COLLECTION: ${allMovies.length} unique movies`);
+      
+      // Enrich first 50 movies with runtime data to provide accurate durations
+      console.log('🕐 [EXTENSIVE] Enriching first 50 movies with runtime data...');
+      const moviesToEnrich = allMovies.slice(0, 50);
+      const remainingMovies = allMovies.slice(50);
+      
+      console.log(`📊 [EXTENSIVE] Processing batch: ${moviesToEnrich.length} movies to enrich, ${remainingMovies.length} remaining`);
+      
+      const enrichedMovies = await this.enrichMoviesWithRuntime(moviesToEnrich, {
+        maxConcurrent: 5, // Conservative to avoid rate limits
+        delayMs: 150      // 150ms delay between batches
+      });
+      
+      // Combine enriched movies with remaining movies
+      const finalMovies = [...enrichedMovies, ...remainingMovies];
+      
+      // Log enrichment results
+      const enrichedWithRuntime = enrichedMovies.filter(m => m.runtime && m.runtime > 0);
+      console.log(`✅ [EXTENSIVE] Enrichment complete: ${enrichedWithRuntime.length}/${moviesToEnrich.length} movies now have runtime data`);
+      console.log(`📈 [EXTENSIVE] Final collection: ${finalMovies.length} total movies, ${enrichedWithRuntime.length} with runtime data`);
+      
+      return finalMovies;
+      
+    } catch (error) {
+      console.error('Error fetching extensive movie collection:', error.message);
+      // Fallback to basic collection
+      return await this.getAllMoviesForSearch();
+    }
+  }
+
+  // Enhanced discover method with configurable parameters
+  async discoverMovies(page = 1, config = {}) {
+    try {
+      const params = {
+        page,
+        include_adult: false,
+        ...config
+      };
+      
+      const response = await this.api.get('/discover/movie', { params });
+      return response.data;
+    } catch (error) {
+      console.error(`TMDB Discover Error (page ${page}, config: ${JSON.stringify(config)}):`, error.message);
+      // Fallback to popular movies for this page
+      return await this.getPopularMoviesByPage(page);
+    }
+  }
+
+  // Fallback method when API fails
+  getFallbackData(page = 1) {
+    // Provide sample movie data for testing when TMDB API is not available
+    const sampleMovies = [
+      {
+        id: 1,
+        title: "The Avengers",
+        original_title: "The Avengers",
+        overview: "Earth's mightiest heroes must come together and learn to fight as a team if they are going to stop the mischievous Loki and his alien army from enslaving humanity.",
+        poster_path: "/cezWGskPY5x7GaglTTRN4Fugfb8.jpg",
+        release_date: "2012-04-25",
+        vote_average: 7.7,
+        genre_ids: [28, 12, 878]
+      },
+      {
+        id: 2,
+        title: "Avengers: Age of Ultron",
+        original_title: "Avengers: Age of Ultron",
+        overview: "When Tony Stark tries to jumpstart a dormant peacekeeping program, things go awry and Earth's Mightiest Heroes are put to the ultimate test.",
+        poster_path: "/4ssDuvEDkSArWEdyBl2X5EHvYKU.jpg",
+        release_date: "2015-04-22",
+        vote_average: 7.3,
+        genre_ids: [28, 12, 878]
+      },
+      {
+        id: 3,
+        title: "Avengers: Infinity War",
+        original_title: "Avengers: Infinity War",
+        overview: "As the Avengers and their allies have continued to protect the world from threats too large for any one hero to handle, a new danger has emerged from the cosmic shadows: Thanos.",
+        poster_path: "/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg",
+        release_date: "2018-04-25",
+        vote_average: 8.3,
+        genre_ids: [28, 12, 878]
+      },
+      {
+        id: 4,
+        title: "Avengers: Endgame",
+        original_title: "Avengers: Endgame",
+        overview: "After the devastating events of Infinity War, the universe is in ruins due to the efforts of the Mad Titan, Thanos. With the help of remaining allies, the Avengers must assemble once more in order to undo Thanos' actions and restore order to the universe once and for all.",
+        poster_path: "/or06FN3Dka5tukK1e9sl16pB3iy.jpg",
+        release_date: "2019-04-24",
+        vote_average: 8.4,
+        genre_ids: [28, 12, 18]
+      },
+      {
+        id: 5,
+        title: "Iron Man",
+        original_title: "Iron Man",
+        overview: "After being held captive in an Afghan cave, billionaire engineer Tony Stark creates a unique weaponized suit of armor to fight evil.",
+        poster_path: "/78lPtwv72eTNqFW9COBYI0dWDJa.jpg",
+        release_date: "2008-04-30",
+        vote_average: 7.6,
+        genre_ids: [28, 12, 878]
+      },
+      {
+        id: 6,
+        title: "Spider-Man: No Way Home",
+        original_title: "Spider-Man: No Way Home",
+        overview: "Peter Parker is unmasked and no longer able to separate his normal life from the high-stakes of being a super-hero. When he asks for help from Doctor Strange the stakes become even more dangerous, forcing him to discover what it truly means to be Spider-Man.",
+        poster_path: "/1g0dhYtq4irTY1GPXvft6k4YLjm.jpg",
+        release_date: "2021-12-15",
+        vote_average: 8.1,
+        genre_ids: [28, 12, 878]
+      },
+      {
+        id: 7,
+        title: "Thor: Ragnarok",
+        original_title: "Thor: Ragnarok",
+        overview: "Thor is imprisoned on the other side of the universe and finds himself in a race against time to get back to Asgard to stop Ragnarok.",
+        poster_path: "/rzRwTcFvttcN1ZpX2xv4j3tSdJu.jpg",
+        release_date: "2017-10-25",
+        vote_average: 7.6,
+        genre_ids: [28, 12, 35, 878]
+      },
+      {
+        id: 8,
+        title: "Black Panther",
+        original_title: "Black Panther",
+        overview: "King T'Challa returns home from America to the reclusive, technologically advanced African nation of Wakanda to serve as his country's new leader.",
+        poster_path: "/uxzzxijgPIY7slzFvMotPv8wjKA.jpg",
+        release_date: "2018-02-13",
+        vote_average: 7.3,
+        genre_ids: [28, 12, 18, 878]
+      }
+    ];
+
+    return {
+      results: sampleMovies,
+      page: page,
+      total_pages: 1,
+      total_results: sampleMovies.length
+    };
   }
 }
 

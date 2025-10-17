@@ -56,18 +56,31 @@ const userSchema = new mongoose.Schema({
     }]
   },
   watchHistory: [{
-    movie: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Movie'
+    movieId: {
+      type: String,
+      required: true
     },
+    title: String,
+    poster_url: String,
+    rating: Number,
     watchedAt: {
       type: Date,
       default: Date.now
+    }
+  }],
+  searchHistory: [{
+    query: {
+      type: String,
+      required: true,
+      trim: true
     },
-    rating: {
+    searchedAt: {
+      type: Date,
+      default: Date.now
+    },
+    resultCount: {
       type: Number,
-      min: 1,
-      max: 5
+      default: 0
     }
   }],
   isVerified: {
@@ -87,9 +100,9 @@ const userSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
-userSchema.index({ email: 1 });
-userSchema.index({ username: 1 });
-userSchema.index({ 'favorites.movieId': 1 });
+// userSchema.index({ email: 1 });
+// userSchema.index({ username: 1 });
+// userSchema.index({ 'favorites.movieId': 1 });
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {

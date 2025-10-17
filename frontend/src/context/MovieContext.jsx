@@ -1,5 +1,8 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
 import { movieService } from '../services/movieService';
+import { searchHistoryService } from '../services/searchHistoryService';
+import { watchHistoryService } from '../services/watchHistoryService';
 import { useAuth } from './AuthContext';
 import { convertGenreIdsToNames, convertGenreNamesToIds } from '../utils/genreMapping';
 
@@ -7,15 +10,34 @@ const MovieContext = createContext();
 
 const initialState = {
   movies: [],
+  upcomingMovies: [],
+  topRatedMovies: [],
+  popularMovies: [],
   favorites: JSON.parse(localStorage.getItem('favorites')) || [],
   loading: false,
+  upcomingLoading: false,
+  topRatedLoading: false,
+  popularLoading: false,
   error: null,
   searchResults: [],
+  searchHistory: [],
   recommendations: [],
   personalizedRecommendations: [],
   watchHistory: [],
   genres: [],
   userPreferences: {},
+  progressiveSearch: {
+    isActive: false,
+    totalSoFar: 0,
+    totalAvailable: 0,
+    currentPage: 0
+  },
+  progressiveMovies: {
+    isActive: false,
+    totalSoFar: 0,
+    currentSource: '',
+    currentPage: 0
+  }
 };
 
 const movieReducer = (state, action) => {
@@ -36,10 +58,38 @@ const movieReducer = (state, action) => {
       localStorage.setItem('favorites', JSON.stringify(filteredFavorites));
       return { ...state, favorites: filteredFavorites };
     }
+    case 'CLEAR_ALL_FAVORITES': {
+      localStorage.setItem('favorites', JSON.stringify([]));
+      return { ...state, favorites: [] };
+    }
     case 'SET_FAVORITES':
       return { ...state, favorites: action.payload };
     case 'SET_SEARCH_RESULTS':
       return { ...state, searchResults: action.payload, loading: false };
+    case 'SET_SEARCH_HISTORY':
+      return { ...state, searchHistory: action.payload };
+    case 'ADD_TO_SEARCH_HISTORY': {
+      const newHistory = [action.payload, ...state.searchHistory.filter(search => search.query !== action.payload.query)].slice(0, 50);
+      return { ...state, searchHistory: newHistory };
+    }
+    case 'CLEAR_SEARCH_HISTORY':
+      return { ...state, searchHistory: [] };
+    case 'SET_PROGRESSIVE_SEARCH':
+      return { ...state, progressiveSearch: action.payload };
+    case 'SET_PROGRESSIVE_MOVIES':
+      return { ...state, progressiveMovies: action.payload };
+    case 'SET_UPCOMING_MOVIES':
+      return { ...state, upcomingMovies: action.payload, upcomingLoading: false };
+    case 'SET_UPCOMING_LOADING':
+      return { ...state, upcomingLoading: action.payload };
+    case 'SET_TOP_RATED_MOVIES':
+      return { ...state, topRatedMovies: action.payload, topRatedLoading: false };
+    case 'SET_TOP_RATED_LOADING':
+      return { ...state, topRatedLoading: action.payload };
+    case 'SET_POPULAR_MOVIES':
+      return { ...state, popularMovies: action.payload, popularLoading: false };
+    case 'SET_POPULAR_LOADING':
+      return { ...state, popularLoading: action.payload };
     case 'SET_RECOMMENDATIONS':
       return { ...state, recommendations: action.payload };
     case 'SET_PERSONALIZED_RECOMMENDATIONS':
@@ -172,25 +222,419 @@ export const MovieProvider = ({ children }) => {
 
   const fetchMovies = useCallback(async () => {
     dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_PROGRESSIVE_MOVIES', payload: { isActive: false, totalSoFar: 0, currentSource: '', currentPage: 0 } });
+    
     try {
-      const response = await movieService.getAllMovies();
-      const movies = response.data || [];
-      dispatch({ type: 'SET_MOVIES', payload: movies });
+      console.log('🎬 Fetching movies...');
+      
+      // Try to get ALL available movies with simple category approach
+      try {
+        console.log('🔄 Attempting to load ALL movies...');
+        const response = await movieService.getAllMovies({ 
+          category: 'mixed',
+          page: 1,
+          limit: 1000, // Get all available movies for complete browsing experience
+          all: true // Enable loading of extensive movie collection
+        });
+        
+        if (response && response.data) {
+          const movies = response.data || [];
+          console.log(`✅ Successfully loaded ${movies.length} movies`);
+          dispatch({ type: 'SET_MOVIES', payload: movies });
+          dispatch({ type: 'SET_LOADING', payload: false });
+          dispatch({ type: 'SET_PROGRESSIVE_MOVIES', payload: { isActive: false, totalSoFar: movies.length, currentSource: 'mixed', currentPage: 1 } });
+          return;
+        }
+      } catch (fullLoadError) {
+        console.log('⚠️ Full movie load failed, trying smaller batch:', fullLoadError.message);
+      }
+      
+      // Fallback 1: Try loading 500 movies
+      try {
+        console.log('🔄 Trying 500 movies...');
+        const response = await movieService.getAllMovies({ 
+          category: 'mixed',
+          page: 1,
+          limit: 500
+        });
+        
+        if (response && response.data) {
+          const movies = response.data || [];
+          console.log(`✅ Successfully loaded ${movies.length} movies (500 limit)`);
+          dispatch({ type: 'SET_MOVIES', payload: movies });
+          dispatch({ type: 'SET_LOADING', payload: false });
+          return;
+        }
+      } catch (mediumLoadError) {
+        console.log('⚠️ 500 movie load failed, trying smaller batch:', mediumLoadError.message);
+      }
+      
+      // Fallback 2: Try loading 200 movies
+      try {
+        console.log('🔄 Trying 200 movies...');
+        const response = await movieService.getAllMovies({ 
+          category: 'mixed',
+          page: 1,
+          limit: 200
+        });
+        
+        if (response && response.data) {
+          const movies = response.data || [];
+          console.log(`✅ Successfully loaded ${movies.length} movies (200 limit)`);
+          dispatch({ type: 'SET_MOVIES', payload: movies });
+          dispatch({ type: 'SET_LOADING', payload: false });
+          return;
+        }
+      } catch (smallLoadError) {
+        console.log('⚠️ 200 movie load failed, trying popular movies:', smallLoadError.message);
+      }
+      
+      // Fallback 3: Try popular movies
+      console.log('🔄 Falling back to popular movies...');
+      const fallbackResponse = await movieService.getAllMovies({ 
+        category: 'popular',
+        page: 1,
+        limit: 200 // Get popular movies as final fallback
+      });
+      
+      if (fallbackResponse && fallbackResponse.data) {
+        const movies = fallbackResponse.data || [];
+        console.log(`✅ Fallback successful: loaded ${movies.length} popular movies`);
+        dispatch({ type: 'SET_MOVIES', payload: movies });
+      } else {
+        console.log('⚠️ No movies found, setting empty array');
+        dispatch({ type: 'SET_MOVIES', payload: [] });
+      }
+      
     } catch (error) {
+      console.error('❌ Movie loading failed:', error.message);
+      
+      // Final fallback - set empty array
+      console.log('🔄 Setting empty movies array');
+      dispatch({ type: 'SET_MOVIES', payload: [] });
       dispatch({ type: 'SET_ERROR', payload: error.message });
     }
+    
+    dispatch({ type: 'SET_LOADING', payload: false });
+    dispatch({ type: 'SET_PROGRESSIVE_MOVIES', payload: { isActive: false, totalSoFar: 0, currentSource: '', currentPage: 0 } });
   }, []);
 
-  const searchMovies = async (query) => {
-    dispatch({ type: 'SET_LOADING', payload: true });
+  const fetchUpcomingMovies = useCallback(async () => {
+    dispatch({ type: 'SET_UPCOMING_LOADING', payload: true });
+    
     try {
-      const response = await movieService.searchMovies(query);
-      const results = response.data || [];
-      dispatch({ type: 'SET_SEARCH_RESULTS', payload: results });
+      console.log('🎬 Fetching upcoming movies...');
+      const response = await movieService.getUpcomingMovies(1, 20);
+      
+      if (response && response.data) {
+        const upcomingMovies = Array.isArray(response.data) ? response.data : response.data.results || [];
+        console.log(`✅ Fetched ${upcomingMovies.length} upcoming movies`);
+        dispatch({ type: 'SET_UPCOMING_MOVIES', payload: upcomingMovies });
+      }
     } catch (error) {
+      console.error('❌ Error fetching upcoming movies:', error.message);
       dispatch({ type: 'SET_ERROR', payload: error.message });
     }
-  };
+    
+    dispatch({ type: 'SET_UPCOMING_LOADING', payload: false });
+  }, []);
+
+  const fetchTopRatedMovies = useCallback(async () => {
+    const callId = Date.now();
+    
+    // Prevent multiple simultaneous calls
+    if (state.topRatedLoading) {
+      console.log('🚫 [FRONTEND] fetchTopRatedMovies already in progress, skipping...');
+      return;
+    }
+    
+    dispatch({ type: 'SET_TOP_RATED_LOADING', payload: true });
+    
+    try {
+      console.log(`🏆 [FRONTEND] Starting fetchTopRatedMovies... Call ID: ${callId}`);
+      
+      // Use the new backend endpoint that returns 100 movies directly
+      console.log(`🔄 [FRONTEND] Requesting top 100 rated movies from backend...`);
+      const response = await movieService.getAllMovies({ category: 'top_rated' });
+      
+      console.log(`📋 [FRONTEND] Raw response:`, {
+        hasResponse: !!response,
+        hasSuccess: !!(response && response.success),
+        hasData: !!(response && response.data),
+        dataType: response && response.data ? typeof response.data : 'undefined',
+        dataLength: response && response.data ? (Array.isArray(response.data) ? response.data.length : 'not array') : 'no data',
+        fullResponse: response
+      });
+      
+      if (response && response.success && response.data) {
+        const movies = Array.isArray(response.data) ? response.data : [];
+        
+        console.log(`✅ [FRONTEND] Received ${movies.length} top-rated movies`);
+        
+        // Log top 100 movie titles in frontend console
+        console.log('🎬 TOP 100 RATED MOVIES (Frontend):');
+        console.log('================================================================================');
+        movies.slice(0, 100).forEach((movie, index) => {
+          const year = movie.release_date ? movie.release_date.substring(0, 4) : 'Unknown';
+          console.log(`${(index + 1).toString().padStart(3)}. ${movie.title} (${movie.vote_average}⭐) - ${year}`);
+        });
+        console.log('================================================================================');
+        console.log(`✅ Logged ${Math.min(movies.length, 100)} top-rated movies`);
+        
+        // Trigger backend logging endpoint
+        try {
+          await fetch(`${movieService.API_BASE_URL}/movies/log-top-100`);
+          console.log('🔄 [FRONTEND] Triggered backend top 100 logging');
+        } catch (error) {
+          console.warn('⚠️ [FRONTEND] Failed to trigger backend logging:', error.message);
+        }
+        
+        dispatch({ type: 'SET_TOP_RATED_MOVIES', payload: movies });
+        console.log(`✅ [FRONTEND] Top-rated movies updated: ${movies.length} total`);
+      } else {
+        console.error('❌ [FRONTEND] Invalid response format for top-rated movies:', response);
+        dispatch({ type: 'SET_TOP_RATED_MOVIES', payload: [] });
+      }
+    } catch (error) {
+      console.error('❌ [FRONTEND] Error fetching top-rated movies:', error);
+      dispatch({ type: 'SET_TOP_RATED_MOVIES', payload: [] });
+    }
+    
+    dispatch({ type: 'SET_TOP_RATED_LOADING', payload: false });
+  }, [state.topRatedLoading]);
+
+  // Fetch popular movies from backend
+  const fetchPopularMovies = useCallback(async () => {
+    const callId = Date.now();
+    
+    // Prevent multiple simultaneous calls
+    if (state.popularLoading) {
+      console.log('🚫 [FRONTEND] fetchPopularMovies already in progress, skipping...');
+      return;
+    }
+    
+    dispatch({ type: 'SET_POPULAR_LOADING', payload: true });
+    
+    try {
+      console.log(`🔥 [FRONTEND] Starting fetchPopularMovies... Call ID: ${callId}`);
+      
+      // Use the new backend endpoint that returns 100 movies directly
+      console.log(`🔄 [FRONTEND] Requesting top 100 popular movies from backend...`);
+      const response = await movieService.getAllMovies({ category: 'popular' });
+      
+      console.log(`📋 [FRONTEND] Raw response:`, {
+        hasResponse: !!response,
+        hasSuccess: !!(response && response.success),
+        hasData: !!(response && response.data),
+        dataType: response && response.data ? typeof response.data : 'undefined',
+        dataLength: response && response.data ? (Array.isArray(response.data) ? response.data.length : 'not array') : 'no data',
+        fullResponse: response
+      });
+      
+      if (response && response.success && response.data) {
+        const movies = Array.isArray(response.data) ? response.data : [];
+        
+        console.log(`✅ [FRONTEND] Received ${movies.length} popular movies`);
+        
+        // Log top 100 movie titles in frontend console
+        console.log('🔥 TOP 100 POPULAR MOVIES (Frontend):');
+        console.log('================================================================================');
+        movies.slice(0, 100).forEach((movie, index) => {
+          const year = movie.release_date ? movie.release_date.substring(0, 4) : 'Unknown';
+          console.log(`${(index + 1).toString().padStart(3)}. ${movie.title} (${movie.vote_average}⭐) - ${year}`);
+        });
+        console.log('================================================================================');
+        console.log(`✅ Logged ${Math.min(movies.length, 100)} popular movies`);
+        
+        // Trigger backend logging endpoint
+        try {
+          await fetch(`${movieService.API_BASE_URL}/movies/log-popular-100`);
+          console.log('🔄 [FRONTEND] Triggered backend popular 100 logging');
+        } catch (error) {
+          console.warn('⚠️ [FRONTEND] Failed to trigger backend logging:', error.message);
+        }
+        
+        dispatch({ type: 'SET_POPULAR_MOVIES', payload: movies });
+        console.log(`✅ [FRONTEND] Popular movies updated: ${movies.length} total`);
+      } else {
+        console.error('❌ [FRONTEND] Invalid response format for popular movies:', response);
+        dispatch({ type: 'SET_POPULAR_MOVIES', payload: [] });
+      }
+    } catch (error) {
+      console.error('❌ [FRONTEND] Error fetching popular movies:', error);
+      dispatch({ type: 'SET_POPULAR_MOVIES', payload: [] });
+    }
+    
+    dispatch({ type: 'SET_POPULAR_LOADING', payload: false });
+  }, [state.popularLoading]);
+
+  // Search History Functions
+  const loadSearchHistory = useCallback(async () => {
+    if (!user) {
+      dispatch({ type: 'SET_SEARCH_HISTORY', payload: [] });
+      return;
+    }
+
+    try {
+      const response = await searchHistoryService.getSearchHistory(user.id, 20);
+      if (response.success) {
+        dispatch({ type: 'SET_SEARCH_HISTORY', payload: response.data });
+      }
+    } catch (error) {
+      console.error('Error loading search history:', error);
+    }
+  }, [user]);
+
+  const saveSearchHistory = useCallback(async (query, resultCount = 0) => {
+    if (!user || !query.trim()) return;
+
+    try {
+      const response = await searchHistoryService.addSearchHistory(user.id, query.trim(), resultCount);
+      if (response.success) {
+        dispatch({ type: 'ADD_TO_SEARCH_HISTORY', payload: {
+          query: query.trim(),
+          resultCount,
+          searchedAt: new Date()
+        }});
+      }
+    } catch (error) {
+      console.error('Error saving search history:', error);
+    }
+  }, [user]);
+
+  const clearSearchHistory = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const response = await searchHistoryService.clearSearchHistory(user.id);
+      if (response.success) {
+        dispatch({ type: 'CLEAR_SEARCH_HISTORY' });
+      }
+    } catch (error) {
+      console.error('Error clearing search history:', error);
+    }
+  }, [user]);
+
+  const deleteSearchEntry = useCallback(async (searchId) => {
+    if (!user) return;
+
+    try {
+      await searchHistoryService.deleteSearchEntry(user.id, searchId);
+      // Reload search history after deletion
+      loadSearchHistory();
+    } catch (error) {
+      console.error('Error deleting search entry:', error);
+    }
+  }, [user, loadSearchHistory]);
+
+  // Watch History Functions
+  const loadWatchHistory = useCallback(async () => {
+    if (!user) {
+      // Load from localStorage for guest users
+      const localHistory = JSON.parse(localStorage.getItem('watchHistory')) || [];
+      dispatch({ type: 'SET_WATCH_HISTORY', payload: localHistory });
+      return;
+    }
+
+    try {
+      const response = await watchHistoryService.getWatchHistory(user.id, 50);
+      if (response.success) {
+        dispatch({ type: 'SET_WATCH_HISTORY', payload: response.data });
+        // Also sync to localStorage
+        localStorage.setItem('watchHistory', JSON.stringify(response.data));
+      }
+    } catch (error) {
+      console.error('Error loading watch history:', error);
+      // Fallback to localStorage
+      const localHistory = JSON.parse(localStorage.getItem('watchHistory')) || [];
+      dispatch({ type: 'SET_WATCH_HISTORY', payload: localHistory });
+    }
+  }, [user]);
+
+  const clearWatchHistory = useCallback(async () => {
+    // Always clear local state
+    dispatch({ type: 'SET_WATCH_HISTORY', payload: [] });
+    localStorage.removeItem('watchHistory');
+
+    // If user is logged in, also clear from backend
+    if (user && user.id) {
+      try {
+        await watchHistoryService.clearWatchHistory(user.id);
+      } catch (error) {
+        console.error('Error clearing watch history from backend:', error);
+      }
+    }
+  }, [user]);
+
+  // Load search history when user changes
+  useEffect(() => {
+    loadSearchHistory();
+  }, [loadSearchHistory]);
+
+  // Load watch history when user changes
+  useEffect(() => {
+    loadWatchHistory();
+  }, [loadWatchHistory]);
+
+  const searchMovies = useCallback(async (query) => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      if (!query || query.trim() === '') {
+        dispatch({ type: 'SET_SEARCH_RESULTS', payload: [] });
+        dispatch({ type: 'SET_LOADING', payload: false });
+        return;
+      }
+
+      console.log('🔍 Starting progressive search for:', query);
+      
+      // Use progressive search for better UX
+      await movieService.searchMoviesProgressive(query, (progressData) => {
+        // Update results as they come in
+        console.log(`� Progressive update: ${progressData.newResults.length} new results, total: ${progressData.totalSoFar}`);
+        
+        // Show results immediately and stop loading on first batch
+        if (progressData.currentPage === 1) {
+          dispatch({ type: 'SET_LOADING', payload: false });
+        }
+        
+        // Update search results with all results so far
+        dispatch({ type: 'SET_SEARCH_RESULTS', payload: progressData.results });
+        
+        // Update progressive search status
+        dispatch({ type: 'SET_PROGRESSIVE_SEARCH', payload: {
+          isActive: !progressData.isComplete,
+          totalSoFar: progressData.totalSoFar,
+          totalAvailable: progressData.totalAvailable,
+          currentPage: progressData.currentPage
+        } });
+        
+        if (progressData.isComplete) {
+          console.log(`✅ Progressive search complete: ${progressData.totalSoFar} total results`);
+          // Save to search history when search is complete
+          if (user && query.trim()) {
+            saveSearchHistory(query.trim(), progressData.totalSoFar);
+          }
+        }
+      });
+      
+    } catch (error) {
+      console.error('❌ Progressive search failed:', error.message);
+      
+      // Fallback to regular search
+      console.log('🔄 Falling back to regular search...');
+      try {
+        const response = await movieService.searchMovies(query);
+        const results = response.data || [];
+        dispatch({ type: 'SET_SEARCH_RESULTS', payload: results });
+      } catch (fallbackError) {
+        console.error('❌ Fallback search also failed:', fallbackError.message);
+        dispatch({ type: 'SET_ERROR', payload: error.message });
+      }
+      
+      dispatch({ type: 'SET_LOADING', payload: false });
+      dispatch({ type: 'SET_PROGRESSIVE_SEARCH', payload: { isActive: false, totalSoFar: 0, totalAvailable: 0, currentPage: 0 } });
+    }
+  }, [user, saveSearchHistory]); // Memoized to prevent infinite re-renders
 
   const addToFavorites = async (movie) => {
     if (!state.favorites.find(fav => fav.id === movie.id)) {
@@ -290,6 +734,36 @@ export const MovieProvider = ({ children }) => {
     }
   };
 
+  const clearAllFavorites = async () => {
+    if (user) {
+      // Clear all favorites on server
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/auth/favorites`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+          dispatch({ type: 'CLEAR_ALL_FAVORITES' });
+          // Refresh personalized recommendations after clearing favorites
+          setTimeout(() => getPersonalizedRecommendations(), 1000);
+        } else {
+          throw new Error(data.message);
+        }
+      } catch (error) {
+        console.error('Error clearing all favorites:', error);
+        dispatch({ type: 'SET_ERROR', payload: 'Failed to clear favorites. Please try again.' });
+      }
+    } else {
+      // Clear all favorites from localStorage for guest users
+      dispatch({ type: 'CLEAR_ALL_FAVORITES' });
+    }
+  };
+
   const getRecommendations = useCallback(async (movieId = null) => {
     try {
       let recommendations;
@@ -329,13 +803,25 @@ export const MovieProvider = ({ children }) => {
   };
 
   // Add movie to watch history
-  const addToWatchHistory = useCallback((movie) => {
+  const addToWatchHistory = useCallback(async (movie) => {
     const historyItem = {
       ...movie,
       watchedAt: new Date().toISOString()
     };
+    
+    // Always add to local state for immediate UI update
     dispatch({ type: 'ADD_TO_WATCH_HISTORY', payload: historyItem });
-  }, []);
+    
+    // If user is logged in, also save to backend
+    if (user && user.id) {
+      try {
+        await watchHistoryService.addToWatchHistory(user.id, movie);
+      } catch (error) {
+        console.error('Error saving watch history to backend:', error);
+        // Continue with local storage fallback
+      }
+    }
+  }, [user]);
 
   // Get user's favorite genres
   const getFavoriteGenres = useCallback(() => {
@@ -400,11 +886,21 @@ export const MovieProvider = ({ children }) => {
     ...state,
     // Movie data functions
     fetchMovies,
+    fetchUpcomingMovies,
+    fetchTopRatedMovies,
+    fetchPopularMovies,
     searchMovies,
+    
+    // Search History functions
+    loadSearchHistory,
+    saveSearchHistory,
+    clearSearchHistory,
+    deleteSearchEntry,
     
     // Favorites functions
     addToFavorites,
     removeFromFavorites,
+    clearAllFavorites,
     isFavoriteMovie,
     
     // Recommendations functions
@@ -415,6 +911,8 @@ export const MovieProvider = ({ children }) => {
     
     // Watch history functions
     addToWatchHistory,
+    loadWatchHistory,
+    clearWatchHistory,
     
     // User preferences functions
     getFavoriteGenres,

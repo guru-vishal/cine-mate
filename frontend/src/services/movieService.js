@@ -1,10 +1,10 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 15000, // Increased timeout for TMDB calls
+  timeout: 45000, // Increased timeout for loading all movies (45 seconds)
 });
 
 // Request deduplication cache
@@ -22,7 +22,8 @@ export const movieService = {
         genre,
         year,
         sort = 'popular',
-        category = 'mixed'
+        category = 'mixed',
+        all = false
       } = params;
 
       const queryParams = new URLSearchParams({
@@ -34,6 +35,7 @@ export const movieService = {
 
       if (genre) queryParams.append('genre', genre);
       if (year) queryParams.append('year', year.toString());
+      if (all) queryParams.append('all', 'true'); // Add the all parameter
 
       const cacheKey = `/movies?${queryParams}`;
       const now = Date.now();
@@ -65,21 +67,289 @@ export const movieService = {
     }
   },
 
-  // Search movies
-  async searchMovies(query, page = 1, limit = 20) {
+  // Progressive movies loading with real-time results
+  async getMoviesProgressive(onProgress) {
+    try {
+      console.log(`🎬 Frontend: Starting progressive movie loading`);
+
+      const url = `${API_URL}/movies/progressive`;
+      
+      return new Promise((resolve, reject) => {
+        const eventSource = new EventSource(url);
+        let allResults = [];
+        let hasReceivedData = false;
+
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            
+            if (!data.success) {
+              console.error('Progressive movies error:', data.message);
+              eventSource.close();
+              reject(new Error(data.message));
+              return;
+            }
+
+            // Add new results to the collection
+            if (data.data && data.data.length > 0) {
+              allResults.push(...data.data);
+              hasReceivedData = true;
+              
+              console.log(`📥 Progressive: Received ${data.data.length} results from ${data.source} (page ${data.page}), total: ${allResults.length}`);
+              
+              // Call progress callback with current results
+              if (onProgress) {
+                onProgress({
+                  results: [...allResults], // Send copy of all results so far
+                  newResults: data.data, // This batch of new results
+                  totalSoFar: allResults.length,
+                  source: data.source,
+                  page: data.page,
+                  isComplete: data.is_complete
+                });
+              }
+            }
+
+            // If loading is complete, resolve
+            if (data.is_complete) {
+              console.log(`✅ Progressive movie loading complete: ${allResults.length} total movies`);
+              eventSource.close();
+              resolve({
+                success: true,
+                data: allResults,
+                total: allResults.length
+              });
+            }
+          } catch (parseError) {
+            console.error('Error parsing progressive movies data:', parseError);
+            eventSource.close();
+            reject(parseError);
+          }
+        };
+
+        eventSource.addEventListener('close', () => {
+          console.log('Progressive movies connection closed');
+          eventSource.close();
+          if (!hasReceivedData) {
+            reject(new Error('No data received from progressive movie loading'));
+          }
+        });
+
+        eventSource.onerror = (error) => {
+          console.error('Progressive movies connection error:', error);
+          eventSource.close();
+          reject(new Error('Connection error during progressive movie loading'));
+        };
+
+        // Timeout after 45 seconds (longer than search due to more data)
+        setTimeout(() => {
+          if (eventSource.readyState !== EventSource.CLOSED) {
+            console.log('Progressive movies timeout, closing connection');
+            eventSource.close();
+            if (hasReceivedData) {
+              resolve({
+                success: true,
+                data: allResults,
+                total: allResults.length
+              });
+            } else {
+              reject(new Error('Progressive movie loading timeout'));
+            }
+          }
+        }, 45000);
+      });
+
+    } catch (error) {
+      console.error('Error starting progressive movie loading:', error);
+      throw error;
+    }
+  },
+
+  // Progressive search movies with real-time results
+  async searchMoviesProgressive(query, onProgress) {
     try {
       if (!query || query.trim() === '') {
         throw new Error('Search query is required');
       }
 
-      const response = await api.get('/movies/search', {
-        params: { q: query.trim(), page, limit }
+      console.log(`🔍 Frontend: Starting progressive search for "${query}"`);
+
+      const url = `${API_URL}/movies/search/progressive?q=${encodeURIComponent(query.trim())}`;
+      
+      return new Promise((resolve, reject) => {
+        const eventSource = new EventSource(url);
+        let allResults = [];
+        let hasReceivedData = false;
+
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            
+            if (!data.success) {
+              console.error('Progressive search error:', data.message);
+              eventSource.close();
+              reject(new Error(data.message));
+              return;
+            }
+
+            // Add new results to the collection
+            if (data.data && data.data.length > 0) {
+              allResults.push(...data.data);
+              hasReceivedData = true;
+              
+              console.log(`📥 Progressive: Received ${data.data.length} results (page ${data.current_page}), total: ${allResults.length}`);
+              
+              // Call progress callback with current results
+              if (onProgress) {
+                onProgress({
+                  results: [...allResults], // Send copy of all results so far
+                  newResults: data.data, // This batch of new results
+                  totalSoFar: allResults.length,
+                  totalAvailable: data.total_available,
+                  currentPage: data.current_page,
+                  isComplete: data.is_complete
+                });
+              }
+            }
+
+            // If search is complete, resolve
+            if (data.is_complete) {
+              console.log(`✅ Progressive search complete: ${allResults.length} total results`);
+              eventSource.close();
+              resolve({
+                success: true,
+                data: allResults,
+                total: allResults.length,
+                query: query.trim()
+              });
+            }
+          } catch (parseError) {
+            console.error('Error parsing progressive search data:', parseError);
+            eventSource.close();
+            reject(parseError);
+          }
+        };
+
+        eventSource.addEventListener('close', () => {
+          console.log('Progressive search connection closed');
+          eventSource.close();
+          if (!hasReceivedData) {
+            reject(new Error('No data received from progressive search'));
+          }
+        });
+
+        eventSource.onerror = (error) => {
+          console.error('Progressive search connection error:', error);
+          eventSource.close();
+          reject(new Error('Connection error during progressive search'));
+        };
+
+        // Timeout after 30 seconds
+        setTimeout(() => {
+          if (eventSource.readyState !== EventSource.CLOSED) {
+            console.log('Progressive search timeout, closing connection');
+            eventSource.close();
+            if (hasReceivedData) {
+              resolve({
+                success: true,
+                data: allResults,
+                total: allResults.length,
+                query: query.trim()
+              });
+            } else {
+              reject(new Error('Progressive search timeout'));
+            }
+          }
+        }, 30000);
       });
+
+    } catch (error) {
+      console.error('Error starting progressive search:', error);
+      throw error;
+    }
+  },
+
+  // Search movies
+  async searchMovies(query, page = 1, limit = null) {
+    try {
+      if (!query || query.trim() === '') {
+        throw new Error('Search query is required');
+      }
+
+      const params = { q: query.trim() };
+      
+      // Only add pagination params if limit is specified (for backwards compatibility)
+      if (limit !== null) {
+        params.page = page;
+        params.limit = limit;
+        console.log(`🔍 Frontend: Searching with pagination - page: ${page}, limit: ${limit}`);
+      } else {
+        // Request all results for comprehensive search
+        params.all = 'true';
+        console.log(`🔍 Frontend: Requesting comprehensive search (all=true)`);
+      }
+
+      console.log(`📤 Frontend: Sending search request with params:`, params);
+      
+      // Disable caching for search to ensure fresh results
+      const response = await api.get('/movies/search', { 
+        params,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+      
+      console.log(`📥 Frontend: Received response with ${response.data?.data?.length || 0} results`);
       return response.data;
     } catch (error) {
       console.error('Error searching movies:', error);
       throw error;
     }
+  },
+
+  // Get comprehensive movie list for enhanced search
+  async getAllMoviesForSearch() {
+    try {
+      const cacheKey = '/movies?all=true';
+      const now = Date.now();
+
+      // Check if we have a recent request for comprehensive movie list
+      if (requestCache.has(cacheKey)) {
+        const { timestamp, promise } = requestCache.get(cacheKey);
+        if (now - timestamp < CACHE_DURATION * 6) { // Cache longer for comprehensive list (30 seconds)
+          console.log('Returning cached comprehensive movie list');
+          return promise;
+        } else {
+          requestCache.delete(cacheKey);
+        }
+      }
+
+      const promise = api.get('/movies', {
+        params: { all: 'true' }
+      }).then(response => response.data);
+
+      requestCache.set(cacheKey, { timestamp: now, promise });
+      return promise;
+    } catch (error) {
+      console.error('Error fetching comprehensive movie list:', error);
+      throw error;
+    }
+  },
+
+  // Enhanced local search within fetched movies
+  searchMoviesLocally(movies, query) {
+    if (!query || query.trim() === '') {
+      return movies;
+    }
+
+    const searchTerm = query.toLowerCase().trim();
+    return movies.filter(movie => {
+      const title = (movie.title || movie.original_title || '').toLowerCase();
+      const overview = (movie.overview || '').toLowerCase();
+      
+      return title.includes(searchTerm) || overview.includes(searchTerm);
+    });
   },
 
   // Get movie by ID
@@ -101,11 +371,6 @@ export const movieService = {
   // Get top rated movies
   async getTopRatedMovies(page = 1, limit = 20) {
     return this.getAllMovies({ page, limit, category: 'top_rated' });
-  },
-
-  // Get now playing movies
-  async getNowPlayingMovies(page = 1, limit = 20) {
-    return this.getAllMovies({ page, limit, category: 'now_playing' });
   },
 
   // Get upcoming movies
@@ -233,11 +498,12 @@ export const movieService = {
 // Export individual functions for backward compatibility
 export const getAllMovies = movieService.getAllMovies.bind(movieService);
 export const searchMovies = movieService.searchMovies.bind(movieService);
+export const getAllMoviesForSearch = movieService.getAllMoviesForSearch.bind(movieService);
+export const searchMoviesLocally = movieService.searchMoviesLocally.bind(movieService);
 export const getMovieById = movieService.getMovieById.bind(movieService);
 export const getRecommendations = movieService.getRecommendations.bind(movieService);
 export const getPopularMovies = movieService.getPopularMovies.bind(movieService);
 export const getTopRatedMovies = movieService.getTopRatedMovies.bind(movieService);
-export const getNowPlayingMovies = movieService.getNowPlayingMovies.bind(movieService);
 export const getUpcomingMovies = movieService.getUpcomingMovies.bind(movieService);
 export const getMixedMovies = movieService.getMixedMovies.bind(movieService);
 export const getGenres = movieService.getGenres.bind(movieService);

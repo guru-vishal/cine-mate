@@ -1,17 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Search, Heart, Menu, X, Film, User, LogOut, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import useRoutePermissions from '../hooks/useRoutePermissions';
+import ConfirmationModal from './ConfirmationModal';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
   const { canViewFavorites, canViewProfile } = useRoutePermissions();
   const userMenuRef = useRef(null);
+
+  // Hide search bar on search page
+  const isSearchPage = location.pathname === '/search';
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -33,9 +39,19 @@ const Navbar = () => {
     }
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleClearNavbarSearch = () => {
+    setSearchQuery('');
+  };
+
+  const handleLogoutClick = () => {
+    setShowLogoutConfirm(true);
     setIsUserMenuOpen(false);
+    setIsMenuOpen(false);
+  };
+
+  const confirmLogout = () => {
+    logout();
+    setShowLogoutConfirm(false);
     navigate('/');
   };
 
@@ -51,24 +67,39 @@ const Navbar = () => {
             </span>
           </Link>
 
-          {/* Search Bar - Desktop */}
-          <div className="hidden md:flex items-center flex-1 max-w-lg mx-8">
-            <form onSubmit={handleSearch} className="relative w-full">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search movies..."
-                className="w-full bg-gray-900/50 text-white placeholder-gray-400 border border-gray-700 rounded-full py-2 pl-4 pr-12 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-300"
-              />
-              <button
-                type="submit"
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-primary-500 transition-colors duration-300"
-              >
-                <Search className="h-5 w-5" />
-              </button>
-            </form>
-          </div>
+          {/* Search Bar - Desktop (hidden on search page) */}
+          {!isSearchPage && (
+            <div className="hidden md:flex items-center flex-1 max-w-lg mx-8">
+              <form onSubmit={handleSearch} className="relative w-full">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search movies..."
+                  className={`w-full bg-gray-900/50 text-white placeholder-gray-400 border border-gray-700 rounded-full py-2 pl-4 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-300 ${
+                    searchQuery ? 'pr-20' : 'pr-12'
+                  }`}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={handleClearNavbarSearch}
+                    className="absolute right-10 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors duration-300 p-1"
+                    title="Clear search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-primary-500 transition-colors duration-300"
+                  title="Search"
+                >
+                  <Search className="h-5 w-5" />
+                </button>
+              </form>
+            </div>
+          )}
 
           {/* Navigation Links - Desktop */}
           <div className="hidden md:flex items-center space-x-8">
@@ -113,7 +144,7 @@ const Navbar = () => {
                       </Link>
                     )}
                     <button
-                      onClick={handleLogout}
+                      onClick={handleLogoutClick}
                       className="flex items-center space-x-2 w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors duration-300"
                     >
                       <LogOut className="h-4 w-4" />
@@ -153,22 +184,37 @@ const Navbar = () => {
         {isMenuOpen && (
           <div className="md:hidden animate-slide-up">
             <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-gray-900/95 rounded-lg mt-2">
-              {/* Mobile Search */}
-              <form onSubmit={handleSearch} className="relative mb-4">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search movies..."
-                  className="w-full bg-gray-800 text-white placeholder-gray-400 border border-gray-700 rounded-full py-2 pl-4 pr-12 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                <button
-                  type="submit"
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-primary-500 transition-colors duration-300"
-                >
-                  <Search className="h-5 w-5" />
-                </button>
-              </form>
+              {/* Mobile Search (hidden on search page) */}
+              {!isSearchPage && (
+                <form onSubmit={handleSearch} className="relative mb-4">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search movies..."
+                    className={`w-full bg-gray-800 text-white placeholder-gray-400 border border-gray-700 rounded-full py-2 pl-4 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
+                      searchQuery ? 'pr-20' : 'pr-12'
+                    }`}
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={handleClearNavbarSearch}
+                      className="absolute right-10 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors duration-300 p-1"
+                      title="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-primary-500 transition-colors duration-300"
+                    title="Search"
+                  >
+                    <Search className="h-5 w-5" />
+                  </button>
+                </form>
+              )}
               
               <Link
                 to="/"
@@ -205,10 +251,7 @@ const Navbar = () => {
                     </Link>
                   )}
                   <button
-                    onClick={() => {
-                      handleLogout();
-                      setIsMenuOpen(false);
-                    }}
+                    onClick={handleLogoutClick}
                     className="flex items-center space-x-2 w-full text-left px-3 py-2 text-white hover:text-primary-400 hover:bg-gray-800 rounded-md transition-all duration-300"
                   >
                     <LogOut className="h-4 w-4" />
@@ -237,6 +280,18 @@ const Navbar = () => {
           </div>
         )}
       </div>
+
+      {/* Logout Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        onConfirm={confirmLogout}
+        title="Confirm Logout"
+        message="Are you sure you want to logout? You will need to login again to access your account."
+        confirmText="Logout"
+        cancelText="Cancel"
+        type="danger"
+      />
     </nav>
   );
 };

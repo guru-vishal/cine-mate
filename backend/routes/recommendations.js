@@ -1,63 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const Movie = require('../models/Movie');
-
-// Mock recommendations data
-const mockRecommendations = [
-  {
-    id: '1',
-    title: 'Inception',
-    genre: ['Sci-Fi', 'Thriller'],
-    rating: 8.8,
-    poster_url: 'https://image.tmdb.org/t/p/w500/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg',
-    backdrop_url: 'https://image.tmdb.org/t/p/original/s3TBrRGB1iav7gFOCNx3H31MoES.jpg',
-    description: 'A thief who steals corporate secrets through dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.',
-    year: 2010,
-    duration: 148,
-    director: 'Christopher Nolan',
-    cast: ['Leonardo DiCaprio', 'Marion Cotillard', 'Tom Hardy']
-  },
-  {
-    id: '3',
-    title: 'The Dark Knight',
-    genre: ['Action', 'Crime', 'Drama'],
-    rating: 9.0,
-    poster_url: 'https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
-    backdrop_url: 'https://image.tmdb.org/t/p/original/hqkIcbrOHL86UncnHIsHVcVmzue.jpg',
-    description: 'When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.',
-    year: 2008,
-    duration: 152,
-    director: 'Christopher Nolan',
-    cast: ['Christian Bale', 'Heath Ledger', 'Aaron Eckhart']
-  },
-  {
-    id: '5',
-    title: 'The Godfather',
-    genre: ['Crime', 'Drama'],
-    rating: 9.2,
-    poster_url: 'https://image.tmdb.org/t/p/w500/3bhkrj58Vtu7enYsRolD1fZdja1.jpg',
-    backdrop_url: 'https://image.tmdb.org/t/p/original/ejdD20cdHNFAYAN2DlqPToXKyzx.jpg',
-    description: 'The aging patriarch of an organized crime dynasty transfers control of his clandestine empire to his reluctant son.',
-    year: 1972,
-    duration: 175,
-    director: 'Francis Ford Coppola',
-    cast: ['Marlon Brando', 'Al Pacino', 'James Caan']
-  },
-  {
-    id: '7',
-    title: 'Parasite',
-    genre: ['Thriller', 'Drama', 'Comedy'],
-    rating: 8.6,
-    poster_url: 'https://image.tmdb.org/t/p/w500/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg',
-    backdrop_url: 'https://image.tmdb.org/t/p/original/TU9NIjwzjoKPwQHoHshkBcQZzr.jpg',
-    description: 'A poor family schemes to become employed by a wealthy family by infiltrating their household and posing as unrelated, highly qualified individuals.',
-    year: 2019,
-    duration: 132,
-    director: 'Bong Joon-ho',
-    cast: ['Kang-ho Song', 'Sun-kyun Lee', 'Yeo-jeong Jo']
-  }
-];
+const tmdbService = require('../services/tmdbService');
 
 // GET /api/recommendations/:userId - Get recommendations for a specific user
 router.get('/:userId', async (req, res) => {
@@ -68,34 +12,64 @@ router.get('/:userId', async (req, res) => {
     let recommendations = [];
     
     try {
-      // Try to get user and their recommendations from database
-      const user = await User.findById(userId).populate('favorites');
+      // Get user preferences first
+      const user = await User.findById(userId);
       
       if (!user) {
         throw new Error('User not found');
       }
       
-      // Get user's favorite genres from their preferences and favorites
+      // Get user's favorite genres from their stored favorites
       const favoriteGenres = new Set();
       
-      // Add genres from preferences
-      if (user.preferences && user.preferences.genres) {
-        user.preferences.genres.forEach(g => favoriteGenres.add(g));
-      }
-      
-      // Add genres from favorite movies
       if (user.favorites && user.favorites.length > 0) {
         user.favorites.forEach(movie => {
-          if (movie.genre) {
+          if (movie.genre && Array.isArray(movie.genre)) {
             movie.genre.forEach(g => favoriteGenres.add(g));
           }
         });
       }
       
-      // Build recommendation query
-      let query = Movie.find({
-        _id: { $nin: user.favorites.map(fav => fav._id) } // Exclude favorites
-      });
+      // Get TMDB recommendations based on user preferences
+      if (favoriteGenres.size > 0) {
+        // Use TMDB to get movies from user's favorite genres
+        const genreArray = Array.from(favoriteGenres);
+        const randomGenre = genreArray[Math.floor(Math.random() * genreArray.length)];
+        
+        // Get genre ID from genre name for TMDB API
+        const genreMap = {
+          'Action': 28, 'Adventure': 12, 'Animation': 16, 'Comedy': 35,
+          'Crime': 80, 'Documentary': 99, 'Drama': 18, 'Family': 10751,
+          'Fantasy': 14, 'History': 36, 'Horror': 27, 'Music': 10402,
+          'Mystery': 9648, 'Romance': 10749, 'Science Fiction': 878,
+          'Sci-Fi': 878, 'TV Movie': 10770, 'Thriller': 53, 'War': 10752,
+          'Western': 37
+        };
+        
+        const genreId = genreMap[randomGenre] || 18; // Default to Drama
+        const tmdbResponse = await tmdbService.getMoviesByGenre(genreId, 1);
+        recommendations = tmdbResponse.results || tmdbResponse;
+      } else {
+        // If no favorite genres, get popular movies
+        const tmdbResponse = await tmdbService.getPopularMovies(1);
+        recommendations = tmdbResponse.results || tmdbResponse;
+      }
+      
+      // Filter out movies already in user's favorites
+      const userFavoriteIds = user.favorites.map(fav => parseInt(fav.movieId));
+      recommendations = recommendations.filter(movie => 
+        !userFavoriteIds.includes(movie.id)
+      );
+      
+      // Apply additional filters
+      if (minRating) {
+        recommendations = recommendations.filter(movie => 
+          (movie.vote_average || 0) >= parseFloat(minRating)
+        );
+      }
+      
+      // Limit results
+      recommendations = recommendations.slice(0, parseInt(limit));
       
       // Filter by user's favorite genres if any
       if (favoriteGenres.size > 0) {
@@ -122,17 +96,10 @@ router.get('/:userId', async (req, res) => {
       }
       
     } catch (dbError) {
-      console.log('Database error, using mock recommendations:', dbError.message);
+      console.log('Database error, no fallback data available:', dbError.message);
       
-      // Fallback to mock recommendations
-      recommendations = [...mockRecommendations];
-      
-      // Apply filters to mock data
-      if (genre) {
-        recommendations = recommendations.filter(movie => 
-          movie.genre.includes(genre)
-        );
-      }
+      // Return empty recommendations instead of mock data
+      recommendations = [];
       
       if (minRating) {
         recommendations = recommendations.filter(movie => 
@@ -170,12 +137,29 @@ router.get('/genre/:genre', async (req, res) => {
     let recommendations = [];
     
     try {
-      // Try database first
-      let query = Movie.find({ genre: { $in: [genre] } });
+      // Use TMDB to get movies by genre
+      const genreMap = {
+        'Action': 28, 'Adventure': 12, 'Animation': 16, 'Comedy': 35,
+        'Crime': 80, 'Documentary': 99, 'Drama': 18, 'Family': 10751,
+        'Fantasy': 14, 'History': 36, 'Horror': 27, 'Music': 10402,
+        'Mystery': 9648, 'Romance': 10749, 'Science Fiction': 878,
+        'Sci-Fi': 878, 'TV Movie': 10770, 'Thriller': 53, 'War': 10752,
+        'Western': 37
+      };
       
+      const genreId = genreMap[genre] || 18; // Default to Drama
+      const tmdbResponse = await tmdbService.getMoviesByGenre(genreId, 1);
+      recommendations = tmdbResponse.results || tmdbResponse;
+      
+      // Apply filters
       if (minRating) {
-        query = query.where('rating').gte(parseFloat(minRating));
+        recommendations = recommendations.filter(movie => 
+          (movie.vote_average || 0) >= parseFloat(minRating)
+        );
       }
+      
+      // Limit results
+      recommendations = recommendations.slice(0, parseInt(limit));
       
       recommendations = await query
         .sort({ rating: -1 })
@@ -187,16 +171,8 @@ router.get('/genre/:genre', async (req, res) => {
       }
       
     } catch (dbError) {
-      // Fallback to mock data
-      recommendations = mockRecommendations.filter(movie => 
-        movie.genre.includes(genre)
-      );
-      
-      if (minRating) {
-        recommendations = recommendations.filter(movie => 
-          movie.rating >= parseFloat(minRating)
-        );
-      }
+      // Return empty recommendations instead of mock data
+      recommendations = [];
       
       recommendations = recommendations
         .sort((a, b) => b.rating - a.rating)
@@ -228,45 +204,23 @@ router.get('/similar/:movieId', async (req, res) => {
     let similarMovies = [];
     
     try {
-      // Try database first
-      const movie = await Movie.findById(movieId);
+      // Use TMDB to get similar movies
+      similarMovies = await tmdbService.getSimilarMovies(movieId, 1);
       
-      if (!movie) {
-        throw new Error('Movie not found');
+      // Handle both array and object responses
+      if (Array.isArray(similarMovies)) {
+        similarMovies = similarMovies.slice(0, parseInt(limit));
+      } else if (similarMovies.results) {
+        similarMovies = similarMovies.results.slice(0, parseInt(limit));
+      } else {
+        throw new Error('Invalid TMDB response format');
       }
       
-      // Find movies with similar genres
-      similarMovies = await Movie.find({
-        _id: { $ne: movieId },
-        genre: { $in: movie.genre }
-      })
-      .sort({ rating: -1 })
-      .limit(parseInt(limit))
-      .exec();
+    } catch (tmdbError) {
+      console.error('TMDB Similar Movies Error:', tmdbError.message);
       
-      if (similarMovies.length === 0) {
-        throw new Error('No similar movies found');
-      }
-      
-    } catch (dbError) {
-      // Fallback to mock data
-      const movie = mockRecommendations.find(m => m.id === movieId);
-      
-      if (!movie) {
-        return res.status(404).json({
-          success: false,
-          message: 'Movie not found'
-        });
-      }
-      
-      // Find movies with similar genres
-      similarMovies = mockRecommendations
-        .filter(m => 
-          m.id !== movieId && 
-          m.genre.some(g => movie.genre.includes(g))
-        )
-        .sort((a, b) => b.rating - a.rating)
-        .slice(0, parseInt(limit));
+      // Return empty similar movies instead of mock data
+      similarMovies = [];
     }
     
     res.json({
@@ -293,27 +247,27 @@ router.get('/trending', async (req, res) => {
     let trendingMovies = [];
     
     try {
-      // Try database first - get highly rated recent movies
-      const cutoffYear = timeframe === 'month' ? 2020 : 2015;
-      
-      trendingMovies = await Movie.find({
-        year: { $gte: cutoffYear },
-        rating: { $gte: 8.0 }
-      })
-      .sort({ rating: -1, year: -1 })
-      .limit(parseInt(limit))
-      .exec();
-      
-      if (trendingMovies.length === 0) {
-        throw new Error('No trending movies found');
+      // Use TMDB to get trending movies
+      if (timeframe === 'day') {
+        // Get popular movies as daily trending (replacing now playing)
+        const tmdbResponse = await tmdbService.getPopularMovies(1);
+        trendingMovies = tmdbResponse.results || tmdbResponse;
+      } else {
+        // Get popular movies as weekly trending
+        const tmdbResponse = await tmdbService.getPopularMovies(1);
+        trendingMovies = tmdbResponse.results || tmdbResponse;
       }
       
-    } catch (dbError) {
-      // Fallback to mock trending data
-      trendingMovies = mockRecommendations
-        .filter(movie => movie.rating >= 8.5 && movie.year >= 2008)
-        .sort((a, b) => b.rating - a.rating)
+      // Filter for high-rated movies only
+      trendingMovies = trendingMovies
+        .filter(movie => (movie.vote_average || 0) >= 7.0)
         .slice(0, parseInt(limit));
+      
+    } catch (tmdbError) {
+      console.error('TMDB Trending Movies Error:', tmdbError.message);
+      
+      // Return empty trending movies instead of mock data
+      trendingMovies = [];
     }
     
     res.json({

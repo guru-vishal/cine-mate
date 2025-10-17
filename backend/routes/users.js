@@ -2,19 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 
-// Mock user data
-const mockUser = {
-  id: '1',
-  name: 'Demo User',
-  email: 'demo@cinemate.com',
-  favorites: [],
-  preferences: {
-    genres: ['Action', 'Sci-Fi', 'Thriller'],
-    directors: ['Christopher Nolan', 'Denis Villeneuve'],
-    actors: ['Leonardo DiCaprio', 'Christian Bale']
-  },
-  createdAt: new Date()
-};
+// No mock user data - use real database only
 
 // GET /api/user/:id - Get user profile
 router.get('/:id', async (req, res) => {
@@ -22,14 +10,12 @@ router.get('/:id', async (req, res) => {
     const { id } = req.params;
     let user;
     
-    try {
-      user = await User.findById(id).populate('favorites');
-      if (!user) {
-        throw new Error('User not found in database');
-      }
-    } catch (dbError) {
-      // Fallback to mock user
-      user = mockUser;
+    user = await User.findById(id).populate('favorites');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
     }
     
     res.json({
@@ -151,11 +137,11 @@ router.put('/:id/favorites', async (req, res) => {
         throw new Error('User not found');
       }
     } catch (dbError) {
-      // Mock response for development
-      user = {
-        ...mockUser,
-        favorites: favorites
-      };
+      return res.status(500).json({
+        success: false,
+        message: 'Database error updating user favorites',
+        error: dbError.message
+      });
     }
     
     res.json({
@@ -188,11 +174,11 @@ router.post('/:id/favorites/:movieId', async (req, res) => {
       await user.addToFavorites(movieId);
       user = await User.findById(id).populate('favorites');
     } catch (dbError) {
-      // Mock response
-      user = {
-        ...mockUser,
-        favorites: [...mockUser.favorites, movieId]
-      };
+      return res.status(500).json({
+        success: false,
+        message: 'Database error adding movie to favorites',
+        error: dbError.message
+      });
     }
     
     res.json({
@@ -225,11 +211,11 @@ router.delete('/:id/favorites/:movieId', async (req, res) => {
       await user.removeFromFavorites(movieId);
       user = await User.findById(id).populate('favorites');
     } catch (dbError) {
-      // Mock response
-      user = {
-        ...mockUser,
-        favorites: mockUser.favorites.filter(fav => fav !== movieId)
-      };
+      return res.status(500).json({
+        success: false,
+        message: 'Database error removing movie from favorites',
+        error: dbError.message
+      });
     }
     
     res.json({
@@ -261,14 +247,13 @@ router.get('/:id/recommendations', async (req, res) => {
       
       recommendations = await user.getRecommendations();
     } catch (dbError) {
-      // Fallback to mock recommendations
+      // Fallback to database movies
       const Movie = require('../models/Movie');
       try {
         recommendations = await Movie.find().sort({ rating: -1 }).limit(10);
       } catch (movieError) {
-        // Use hardcoded recommendations
-        const mockMovies = require('./movies').mockMovies || [];
-        recommendations = mockMovies.slice(0, 4);
+        // No fallback movies - return empty recommendations
+        recommendations = [];
       }
     }
     
@@ -280,6 +265,278 @@ router.get('/:id/recommendations', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching recommendations',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/user/:id/search-history - Add search query to history
+router.post('/:id/search-history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { query, resultCount = 0 } = req.body;
+    
+    if (!query || query.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Search query is required'
+      });
+    }
+    
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Check if this exact query already exists in recent history
+    const recentDuplicate = user.searchHistory.find(
+      search => search.query.toLowerCase() === query.trim().toLowerCase() &&
+      new Date() - search.searchedAt < 60000 // Within last minute
+    );
+    
+    if (!recentDuplicate) {
+      // Add new search to history
+      user.searchHistory.unshift({
+        query: query.trim(),
+        resultCount: resultCount,
+        searchedAt: new Date()
+      });
+      
+      // Keep only last 50 searches
+      if (user.searchHistory.length > 50) {
+        user.searchHistory = user.searchHistory.slice(0, 50);
+      }
+      
+      await user.save();
+    }
+    
+    res.json({
+      success: true,
+      message: 'Search history updated',
+      data: user.searchHistory.slice(0, 10) // Return recent 10 searches
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error updating search history',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/user/:id/search-history - Get user's search history
+router.get('/:id/search-history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 10 } = req.query;
+    
+    const user = await User.findById(id).select('searchHistory');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    const recentSearches = user.searchHistory
+      .sort((a, b) => new Date(b.searchedAt) - new Date(a.searchedAt))
+      .slice(0, parseInt(limit));
+    
+    res.json({
+      success: true,
+      data: recentSearches
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching search history',
+      error: error.message
+    });
+  }
+});
+
+// DELETE /api/user/:id/search-history - Clear search history
+router.delete('/:id/search-history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    user.searchHistory = [];
+    await user.save();
+    
+    res.json({
+      success: true,
+      message: 'Search history cleared'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error clearing search history',
+      error: error.message
+    });
+  }
+});
+
+// DELETE /api/user/:id/search-history/:searchId - Delete specific search
+router.delete('/:id/search-history/:searchId', async (req, res) => {
+  try {
+    const { id, searchId } = req.params;
+    
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    user.searchHistory = user.searchHistory.filter(
+      search => search._id.toString() !== searchId
+    );
+    
+    await user.save();
+    
+    res.json({
+      success: true,
+      message: 'Search entry deleted'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting search entry',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/user/:id/watch-history - Add movie to watch history
+router.post('/:id/watch-history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { movieData } = req.body;
+    
+    if (!movieData || !movieData.id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Movie data with ID is required'
+      });
+    }
+    
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Check if movie already exists in watch history
+    const existingIndex = user.watchHistory.findIndex(
+      item => item.movieId === movieData.id
+    );
+    
+    const watchItem = {
+      movieId: movieData.id,
+      title: movieData.title,
+      poster_url: movieData.poster_url || movieData.poster,
+      rating: movieData.rating || movieData.vote_average,
+      watchedAt: new Date()
+    };
+    
+    if (existingIndex !== -1) {
+      // Update existing entry with new watch time
+      user.watchHistory[existingIndex] = watchItem;
+    } else {
+      // Add new entry at the beginning
+      user.watchHistory.unshift(watchItem);
+      
+      // Keep only last 50 entries
+      if (user.watchHistory.length > 50) {
+        user.watchHistory = user.watchHistory.slice(0, 50);
+      }
+    }
+    
+    await user.save();
+    
+    res.json({
+      success: true,
+      message: 'Movie added to watch history',
+      data: user.watchHistory.slice(0, 10) // Return recent 10 entries
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error adding to watch history',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/user/:id/watch-history - Get user's watch history
+router.get('/:id/watch-history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 20 } = req.query;
+    
+    const user = await User.findById(id).select('watchHistory');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    const recentHistory = user.watchHistory
+      .sort((a, b) => new Date(b.watchedAt) - new Date(a.watchedAt))
+      .slice(0, parseInt(limit));
+    
+    res.json({
+      success: true,
+      data: recentHistory
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching watch history',
+      error: error.message
+    });
+  }
+});
+
+// DELETE /api/user/:id/watch-history - Clear watch history
+router.delete('/:id/watch-history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    user.watchHistory = [];
+    await user.save();
+    
+    res.json({
+      success: true,
+      message: 'Watch history cleared'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error clearing watch history',
       error: error.message
     });
   }

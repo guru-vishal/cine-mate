@@ -1,17 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Heart, Star, Play } from 'lucide-react';
+import { Heart, Star, Play, Image, Clock } from 'lucide-react';
 import { useMovie } from '../context/MovieContext';
 import { useAuth } from '../context/AuthContext';
+import { convertGenreIdsToNames } from '../utils/genreMapping';
+import { formatDuration } from '../utils/durationHelper';
+import { getMovieDuration } from '../utils/durationEstimator';
 
 // Helper function to normalize movie data from different sources
 const normalizeMovieData = (movie) => {
   if (!movie) return {};
   
   // Handle different poster URL formats
-  let posterUrl = '/placeholder-movie.jpg';
+  let posterUrl = null;
   
-  if (movie.poster_url) {
+  if (movie.poster_url && movie.poster_url !== '/placeholder-movie.jpg') {
     // Already a full URL (from MongoDB favorites)
     posterUrl = movie.poster_url;
   } else if (movie.poster_path) {
@@ -20,15 +23,23 @@ const normalizeMovieData = (movie) => {
       ? movie.poster_path 
       : `https://image.tmdb.org/t/p/w500${movie.poster_path}`;
   }
+  // If no valid poster found, posterUrl remains null
     
+  const genres = movie.genre || 
+            (movie.genre_ids ? convertGenreIdsToNames(movie.genre_ids) : []) ||
+            (movie.genres ? movie.genres.map(g => g.name || g) : []) ||
+            [];
+
   return {
     id: movie.id,
     title: movie.title || 'Untitled Movie',
     poster_url: posterUrl,
-    rating: movie.rating || movie.vote_average || 0,
+    rating: (movie.rating || movie.vote_average) ? 
+      parseFloat(movie.rating || movie.vote_average).toFixed(1) : '0.0',
+    duration: getMovieDuration(movie), // Get actual or estimated duration
     year: movie.year || (movie.release_date ? new Date(movie.release_date).getFullYear() : ''),
     description: movie.description || movie.overview || 'No description available.',
-    genres: movie.genre || movie.genre_ids || movie.genres || []
+    genres: genres
   };
 };
 
@@ -37,8 +48,13 @@ const MovieCard = ({ movie }) => {
   const location = useLocation();
   const { favorites, addToFavorites, removeFromFavorites } = useMovie();
   const { user } = useAuth();
+  const [imageError, setImageError] = useState(false);
   const normalizedMovie = normalizeMovieData(movie);
   const isFavorite = favorites.some(fav => fav.id === movie.id);
+
+  const handleImageError = () => {
+    setImageError(true);
+  };
 
   const handleFavoriteToggle = (e) => {
     e.preventDefault();
@@ -69,19 +85,29 @@ const MovieCard = ({ movie }) => {
       <Link to={`/movie/${movie.id}`}>
         {/* Poster Image */}
         <div className="aspect-[2/3] overflow-hidden">
-          <img
-            src={normalizedMovie.poster_url}
-            alt={normalizedMovie.title}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-          />
+          {imageError || !normalizedMovie.poster_url ? (
+            <div className="w-full h-full bg-gray-800 flex flex-col items-center justify-center text-gray-400">
+              <Image className="h-16 w-16 mb-3 opacity-50" />
+              <span className="text-sm text-center px-4">No Image Available</span>
+            </div>
+          ) : (
+            <img
+              src={normalizedMovie.poster_url}
+              alt={normalizedMovie.title}
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+              onError={handleImageError}
+            />
+          )}
           
           {/* Overlay on hover */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
             <div className="absolute bottom-4 left-4 right-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center space-x-1">
-                  <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                  <span className="text-white text-sm font-medium">{normalizedMovie.rating || 'N/A'}</span>
+                  <Clock className="h-4 w-4 text-blue-400" />
+                  <span className="text-white text-sm font-medium">
+                    {formatDuration(normalizedMovie.duration)}
+                  </span>
                 </div>
                 <button
                   onClick={handleFavoriteToggle}

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Heart, Star, Play, Clock, Calendar, User, Film } from 'lucide-react';
+import { ArrowLeft, Heart, Star, Play, Clock, Calendar, User, Film, Image } from 'lucide-react';
 import { movieService } from '../services/movieService';
 import { useMovie } from '../context/MovieContext';
 import { useAuth } from '../context/AuthContext';
 import MovieCard from '../components/MovieCard';
+import { formatDuration } from '../utils/durationHelper';
 
 const MovieDetail = () => {
   const { id } = useParams();
@@ -14,6 +15,8 @@ const MovieDetail = () => {
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
   const [similarMovies, setSimilarMovies] = useState([]);
+  const [posterError, setPosterError] = useState(false);
+  const [backdropError, setBackdropError] = useState(false);
 
 
   const isFavorite = movie && favorites.some(fav => fav.id === movie.id);
@@ -109,14 +112,19 @@ const MovieDetail = () => {
   return (
     <div className="min-h-screen pt-16">
       {/* Hero Section */}
-      <section className="relative h-screen overflow-hidden">
+      <section className="relative min-h-screen overflow-hidden py-4 sm:py-8 lg:py-12">
         {/* Background */}
         <div className="absolute inset-0">
-          <img
-            src={movie.backdrop_url || movie.poster_url || 'https://via.placeholder.com/1920x1080/374151/ffffff?text=No+Image'}
-            alt={movie.title || 'Movie'}
-            className="w-full h-full object-cover"
-          />
+          {backdropError || !movie.backdrop_url ? (
+            <div className="w-full h-full bg-gradient-to-br from-gray-900 to-gray-800"></div>
+          ) : (
+            <img
+              src={movie.backdrop_url || movie.poster_url}
+              alt={movie.title || 'Movie'}
+              className="w-full h-full object-cover"
+              onError={() => setBackdropError(true)}
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/60 to-black/30"></div>
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
         </div>
@@ -124,51 +132,63 @@ const MovieDetail = () => {
         {/* Back Button */}
         <Link
           to="/"
-          className="absolute top-24 left-4 z-20 flex items-center space-x-2 bg-black/50 text-white px-4 py-2 rounded-full backdrop-blur-sm hover:bg-black/70 transition-all duration-300"
+          className="absolute top-6 left-4 z-20 flex items-center space-x-2 bg-black/50 text-white px-4 py-2 rounded-full backdrop-blur-sm hover:bg-black/70 transition-all duration-300"
         >
           <ArrowLeft className="h-5 w-5" />
           <span>Back</span>
         </Link>
 
         {/* Content */}
-        <div className="relative z-10 flex items-center h-full">
+        <div className="relative z-10 flex items-center min-h-full py-8 sm:py-12 lg:py-16">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-3 gap-12 items-center">
             {/* Poster */}
-            <div className="lg:col-span-1">
+            <div className="lg:col-span-1 mb-8 lg:mb-0">
               <div className="relative group">
-                <img
-                  src={movie.poster_url || 'https://via.placeholder.com/500x750/374151/ffffff?text=No+Image'}
-                  alt={movie.title || 'Movie'}
-                  className="w-full max-w-md mx-auto rounded-2xl shadow-2xl transform group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2">
-                    <button className="bg-primary-600 hover:bg-primary-700 text-white p-4 rounded-full transition-all duration-300 transform hover:scale-110">
-                      <Play className="h-8 w-8 fill-current" />
-                    </button>
+                {posterError || !movie.poster_url ? (
+                  <div className="w-full max-w-md mx-auto aspect-[2/3] bg-gray-800 rounded-2xl shadow-2xl flex flex-col items-center justify-center text-gray-400">
+                    <Image className="h-20 w-20 mb-4 opacity-50" />
+                    <span className="text-lg text-center px-4">No Poster Available</span>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <img
+                      src={movie.poster_url}
+                      alt={movie.title || 'Movie'}
+                      className="w-full max-w-md mx-auto rounded-2xl shadow-2xl transform group-hover:scale-105 transition-transform duration-500"
+                      onError={() => setPosterError(true)}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2">
+                        <button className="bg-primary-600 hover:bg-primary-700 text-white p-4 rounded-full transition-all duration-300 transform hover:scale-110">
+                          <Play className="h-8 w-8 fill-current" />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
             {/* Movie Info */}
-            <div className="lg:col-span-2">
-              <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 animate-fade-in">
+            <div className="lg:col-span-2 space-y-6">
+              <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-6 animate-fade-in leading-tight">
                 {movie.title || 'Untitled Movie'}
               </h1>
 
-              <div className="flex flex-wrap items-center gap-6 mb-6 text-gray-300 animate-slide-up">
+              <div className="flex flex-wrap items-center gap-6 mb-8 text-gray-300 animate-slide-up">
                 <div className="flex items-center space-x-2">
                   <Calendar className="h-5 w-5" />
                   <span>{movie.year || 'Unknown'}</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Clock className="h-5 w-5" />
-                  <span>{movie.duration || 'N/A'} min</span>
+                  <span>{formatDuration(movie.duration)}</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Star className="h-5 w-5 text-yellow-400 fill-current" />
-                  <span className="text-white font-semibold">{movie.rating || 'N/A'}</span>
+                  <span className="text-white font-semibold">
+                    {movie.rating ? parseFloat(movie.rating).toFixed(1) : 'N/A'}
+                  </span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <User className="h-5 w-5" />
@@ -176,7 +196,7 @@ const MovieDetail = () => {
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2 mb-6 animate-slide-up">
+              <div className="flex flex-wrap gap-2 mb-8 animate-slide-up">
                 {Array.isArray(movie.genre) && movie.genre.length > 0 ? (
                   movie.genre.map((genre, index) => (
                     <span
@@ -193,11 +213,11 @@ const MovieDetail = () => {
                 )}
               </div>
 
-              <p className="text-xl text-gray-300 mb-8 leading-relaxed animate-slide-up">
+              <p className="text-lg sm:text-xl text-gray-300 mb-8 leading-relaxed animate-slide-up max-w-4xl">
                 {movie.description || 'No description available.'}
               </p>
 
-              <div className="flex flex-wrap gap-4 mb-8 animate-scale-in">
+              <div className="flex flex-wrap gap-4 my-8 animate-scale-in">
                 <button 
                   onClick={handleWatchNow}
                   className="flex items-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white px-8 py-4 rounded-full font-semibold transition-all duration-300 transform hover:scale-105"
@@ -222,7 +242,7 @@ const MovieDetail = () => {
 
               {/* Where to Watch */}
               <div className="mb-8 animate-fade-in">
-                <h3 className="text-xl font-semibold text-white mb-4">Where to Watch</h3>
+                <h3 className="text-xl font-semibold text-white mb-6">Where to Watch</h3>
                   <p className="text-gray-400 mb-4 text-sm">
                     Provider information is currently unavailable. Try searching on these platforms:
                   </p>
@@ -293,8 +313,8 @@ const MovieDetail = () => {
                 </div>
 
               {/* Cast */}
-              <div className="animate-fade-in">
-                <h3 className="text-xl font-semibold text-white mb-4">Cast</h3>
+              <div className="mt-8 animate-fade-in">
+                <h3 className="text-xl font-semibold text-white mb-6">Cast</h3>
                 <div className="flex flex-wrap gap-2">
                   {Array.isArray(movie.cast) && movie.cast.length > 0 ? (
                     movie.cast.map((actor, index) => (
@@ -317,9 +337,9 @@ const MovieDetail = () => {
 
       {/* Similar Movies */}
       {similarMovies.length > 0 && (
-        <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <section className="py-12 sm:py-16 lg:py-20 px-4 sm:px-6 lg:px-8 bg-gray-900/50">
           <div className="max-w-7xl mx-auto">
-            <div className="flex items-center space-x-3 mb-8">
+            <div className="flex items-center space-x-3 mb-12">
               <Film className="h-8 w-8 text-primary-500" />
               <h2 className="text-3xl font-bold text-white">Similar Movies</h2>
             </div>
@@ -334,8 +354,6 @@ const MovieDetail = () => {
           </div>
         </section>
       )}
-
-
     </div>
   );
 };

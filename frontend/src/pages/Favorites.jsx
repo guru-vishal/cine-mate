@@ -1,25 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Heart, Trash2, LogIn } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import MovieCard from '../components/MovieCard';
+import ConfirmationModal from '../components/ConfirmationModal';
 import { useMovie } from '../context/MovieContext';
 import { useAuth } from '../context/AuthContext';
 
 const Favorites = () => {
-  const { favorites, removeFromFavorites } = useMovie();
+  const { favorites, removeFromFavorites, clearAllFavorites } = useMovie();
   const { user } = useAuth();
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  const clearAllFavorites = () => {
-    if (window.confirm('Are you sure you want to remove all favorites?')) {
-      favorites.forEach(movie => removeFromFavorites(movie.id));
-    }
+  const handleClearAllClick = () => {
+    setShowConfirmModal(true);
+  };
+
+  const confirmClearAll = () => {
+    clearAllFavorites();
   };
 
   return (
-    <div className="min-h-screen pt-24 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-32 pb-16 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-12">
           <div className="flex items-center space-x-3">
             <Heart className="h-8 w-8 text-primary-500 fill-current" />
             <h1 className="text-4xl font-bold text-white">My Favorites</h1>
@@ -30,7 +34,7 @@ const Favorites = () => {
           
           {favorites.length > 0 && (
             <button
-              onClick={clearAllFavorites}
+              onClick={handleClearAllClick}
               className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors duration-300"
             >
               <Trash2 className="h-4 w-4" />
@@ -41,7 +45,7 @@ const Favorites = () => {
 
         {/* Favorites Grid */}
         {!user ? (
-          <div className="text-center py-20">
+          <div className="text-center py-24">
             <LogIn className="h-24 w-24 text-gray-600 mx-auto mb-6" />
             <h2 className="text-2xl font-semibold text-gray-400 mb-4">Login Required</h2>
             <p className="text-gray-500 mb-8">
@@ -64,7 +68,7 @@ const Favorites = () => {
             </div>
           </div>
         ) : favorites.length === 0 ? (
-          <div className="text-center py-20">
+          <div className="text-center py-24">
             <Heart className="h-24 w-24 text-gray-600 mx-auto mb-6" />
             <h2 className="text-2xl font-semibold text-gray-400 mb-4">No favorites yet</h2>
             <p className="text-gray-500 mb-8">
@@ -78,8 +82,8 @@ const Favorites = () => {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {favorites.map((movie) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-8">
+            {[...favorites].reverse().map((movie) => (
               <div key={movie.id} className="animate-fade-in">
                 <MovieCard movie={movie} />
               </div>
@@ -87,6 +91,18 @@ const Favorites = () => {
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        onConfirm={confirmClearAll}
+        title="Clear All Favorites"
+        message={`Are you sure you want to remove all ${favorites.length} favorite movies? This action cannot be undone.`}
+        confirmText="Clear All"
+        cancelText="Keep Favorites"
+        type="danger"
+      />
     </div>
   );
 };

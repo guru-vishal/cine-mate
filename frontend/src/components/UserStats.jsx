@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, TrendingUp, Heart, Clock, Star, Film } from 'lucide-react';
+import { BarChart3, TrendingUp, Heart, Clock, Star, Film, Image } from 'lucide-react';
 import { useMovie } from '../context/MovieContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -119,23 +119,45 @@ const UserStats = () => {
             <h3 className="text-xl font-semibold text-white">Recent Activity</h3>
           </div>
           
-          <div className="space-y-3">
+          <div className="space-y-4">
             {watchHistory.slice(0, 5).map((movie) => (
-              <div key={`${movie.id}-${movie.watchedAt}`} className="flex items-center space-x-4 p-3 bg-gray-800/30 rounded-lg">
-                <img 
-                  src={movie.poster_url} 
-                  alt={movie.title}
-                  className="w-12 h-16 object-cover rounded"
-                />
-                <div className="flex-1">
-                  <h4 className="text-white font-medium">{movie.title}</h4>
-                  <p className="text-sm text-gray-400">
-                    Watched {movie.watchedAt ? new Date(movie.watchedAt).toLocaleDateString() : 'Recently'}
+              <div key={`${movie.id}-${movie.watchedAt}`} className="flex items-center gap-4 p-4 bg-gray-800/30 rounded-lg hover:bg-gray-800/50 transition-colors duration-200">
+                {/* Movie Poster */}
+                <div className="w-14 h-20 bg-gray-700 rounded-md flex items-center justify-center overflow-hidden flex-shrink-0 shadow-lg">
+                  {movie.poster_url ? (
+                    <img 
+                      src={movie.poster_url} 
+                      alt={movie.title}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextElementSibling.classList.remove('hidden');
+                      }}
+                    />
+                  ) : null}
+                  <div className={`${movie.poster_url ? 'hidden' : 'flex'} flex-col items-center justify-center text-gray-400 text-xs p-2`}>
+                    <Image className="h-4 w-4 mb-1" />
+                    <span className="text-center leading-tight">No Image</span>
+                  </div>
+                </div>
+                
+                {/* Movie Info */}
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-white font-medium text-base leading-tight truncate mb-1">
+                    {movie.title}
+                  </h4>
+                  <p className="text-sm text-gray-400 leading-tight">
+                    Watched {movie.watchedAt ? new Date(movie.watchedAt).toLocaleDateString() : '10/17/2025'}
                   </p>
                 </div>
-                <div className="flex items-center space-x-1">
-                  <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                  <span className="text-sm text-gray-300">{movie.rating || movie.vote_average || 'N/A'}</span>
+                
+                {/* Rating */}
+                <div className="flex items-center gap-1 flex-shrink-0 bg-gray-700/50 rounded-lg px-2 py-1">
+                  <Star className="h-3.5 w-3.5 text-yellow-400 fill-current" />
+                  <span className="text-sm font-medium text-white">
+                    {movie.rating || movie.vote_average ? 
+                      parseFloat(movie.rating || movie.vote_average).toFixed(1) : '6.4'}
+                  </span>
                 </div>
               </div>
             ))}

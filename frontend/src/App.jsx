@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
+import Footer from './components/Footer';
 import Home from './pages/Home';
 import MovieDetail from './pages/MovieDetail';
 import Favorites from './pages/Favorites';
@@ -20,9 +21,10 @@ function App() {
     <AuthProvider>
       <MovieProvider>
         <Router>
-          <div className="min-h-screen bg-gradient-to-br from-dark-900 via-dark-800 to-gray-900">
+          <div className="min-h-screen bg-gradient-to-br from-dark-900 via-dark-800 to-gray-900 flex flex-col">
             <Navbar />
-            <Routes>
+            <main className="flex-1">
+              <Routes>
               {/* Public routes */}
               <Route 
                 path="/" 
@@ -94,7 +96,9 @@ function App() {
                   </RouteGuard>
                 } 
               />
-            </Routes>
+              </Routes>
+            </main>
+            <Footer />
           </div>
         </Router>
       </MovieProvider>

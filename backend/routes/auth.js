@@ -351,6 +351,37 @@ router.get('/favorites', auth, async (req, res) => {
   }
 });
 
+// @route   DELETE /api/auth/favorites
+// @desc    Clear all favorites
+// @access  Private
+router.delete('/favorites', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Clear all favorites
+    user.favorites = [];
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'All favorites cleared successfully',
+      favorites: user.favorites
+    });
+  } catch (error) {
+    console.error('Clear favorites error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error clearing favorites'
+    });
+  }
+});
+
 // @route   PUT /api/auth/favorites
 // @desc    Update user's entire favorites list
 // @access  Private
