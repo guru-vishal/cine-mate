@@ -1,6 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
+import toast from 'react-hot-toast';
+import { Film, UserPlus, LogOut } from 'lucide-react';
 
 const AuthContext = createContext();
 
@@ -67,12 +69,24 @@ export const AuthProvider = ({ children }) => {
         setToken(newToken);
         setUser(userData);
 
+        // Show success toast
+        toast.success(`Welcome back, ${userData.username}!`, {
+          duration: 3000,
+          icon: <Film className="h-5 w-5 text-blue-500" />,
+          style: {
+            background: '#1e293b',
+            color: '#f1f5f9',
+            border: '1px solid #3b82f6',
+          },
+        });
+
         return {
           success: true,
           message: response.data.message,
           user: userData
         };
       } else {
+        toast.error(response.data.message || 'Login failed');
         return {
           success: false,
           message: response.data.message
@@ -80,9 +94,11 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Login error:', error);
+      const errorMessage = error.response?.data?.message || 'Login failed. Please try again.';
+      toast.error(errorMessage);
       return {
         success: false,
-        message: error.response?.data?.message || 'Login failed. Please try again.'
+        message: errorMessage
       };
     }
   };
@@ -100,12 +116,24 @@ export const AuthProvider = ({ children }) => {
         setToken(newToken);
         setUser(newUser);
 
+        // Show success toast
+        toast.success(`Welcome to CineMate, ${newUser.username}!`, {
+          duration: 4000,
+          icon: <UserPlus className="h-5 w-5 text-green-500" />,
+          style: {
+            background: '#1e293b',
+            color: '#f1f5f9',
+            border: '1px solid #10b981',
+          },
+        });
+
         return {
           success: true,
           message: response.data.message,
           user: newUser
         };
       } else {
+        toast.error(response.data.message || 'Signup failed');
         return {
           success: false,
           message: response.data.message
@@ -113,9 +141,11 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Signup error:', error);
+      const errorMessage = error.response?.data?.message || 'Signup failed. Please try again.';
+      toast.error(errorMessage);
       return {
         success: false,
-        message: error.response?.data?.message || 'Signup failed. Please try again.'
+        message: errorMessage
       };
     }
   };
@@ -126,8 +156,28 @@ export const AuthProvider = ({ children }) => {
       if (token) {
         await api.post('/auth/logout');
       }
+      // Show success toast
+      toast.success('Logged out successfully! See you soon!', {
+        duration: 3000,
+        icon: <LogOut className="h-5 w-5 text-orange-500" />,
+        style: {
+          background: '#1e293b',
+          color: '#f1f5f9',
+          border: '1px solid #f97316',
+        },
+      });
     } catch (error) {
       console.error('Logout error:', error);
+      // Still show success toast even if API call fails since local logout still happens
+      toast.success('Logged out successfully! See you soon!', {
+        duration: 3000,
+        icon: <LogOut className="h-5 w-5 text-orange-500" />,
+        style: {
+          background: '#1e293b',
+          color: '#f1f5f9',
+          border: '1px solid #f97316',
+        },
+      });
     } finally {
       // Clear local state regardless of API call result
       localStorage.removeItem('token');

@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, loading } = useAuth();
+  const { login } = useAuth();
 
   const [formData, setFormData] = useState({
     identifier: '',
@@ -15,17 +15,9 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState('');
 
   // Get the redirect path from location state or default to home
   const from = location.state?.from || '/';
-
-  // Set message from navigation state if exists
-  React.useEffect(() => {
-    if (location.state?.message) {
-      setMessage(location.state.message);
-    }
-  }, [location.state]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -42,10 +34,8 @@ const Login = () => {
       }));
     }
     
-    // Clear general message
-    if (message) {
-      setMessage('');
-    }
+    // Clear any existing errors
+    setErrors({});
   };
 
   const validateForm = () => {
@@ -71,22 +61,20 @@ const Login = () => {
     if (!validateForm()) return;
 
     setIsLoading(true);
-    setMessage('');
 
     try {
       const result = await login(formData.identifier, formData.password);
       
       if (result.success) {
-        setMessage('Login successful! Redirecting...');
         // Redirect to the page user came from or home
         setTimeout(() => {
           navigate(from, { replace: true });
-        }, 1000);
-      } else {
-        setMessage(result.message);
+        }, 1500);
       }
+      // Error handling is now done via toast notifications in AuthContext
     } catch (error) {
-      setMessage('An unexpected error occurred. Please try again.');
+      console.error('Login error:', error);
+      // Error handling is now done via toast notifications in AuthContext
     } finally {
       setIsLoading(false);
     }
@@ -173,22 +161,6 @@ const Login = () => {
               </p>
             )}
           </div>
-
-          {/* Message Display */}
-          {message && (
-            <div className={`p-4 rounded-lg flex items-center ${
-              message.includes('successful') 
-                ? 'bg-green-500/20 border border-green-500/50 text-green-400' 
-                : 'bg-red-500/20 border border-red-500/50 text-red-400'
-            }`}>
-              {message.includes('successful') ? (
-                <CheckCircle className="w-5 h-5 mr-2" />
-              ) : (
-                <AlertCircle className="w-5 h-5 mr-2" />
-              )}
-              {message}
-            </div>
-          )}
 
           {/* Submit Button */}
           <button

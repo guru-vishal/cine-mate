@@ -12,8 +12,8 @@ class TMDBService {
     // Re-read environment variables (in case .env was added after startup)
     require('dotenv').config();
     
-    this.apiKey = process.env.TMDB_API_KEY || "a89d4383c95ae47cca1109edd48d79a6";
-    this.baseURL = process.env.TMDB_BASE_URL || 'https://api.themoviedb.org/3';
+    this.apiKey = process.env.TMDB_API_KEY;
+    this.baseURL = process.env.TMDB_BASE_URL;
     
     // Check if it's a Bearer token (JWT) or API key
     const isBearerToken = this.apiKey && this.apiKey.startsWith('eyJ');
@@ -33,7 +33,7 @@ class TMDBService {
       // Use API key authentication (v3 API)
       this.api = axios.create({
         baseURL: this.baseURL,
-        timeout: 10000,
+        timeout: 30000,
         params: {
           api_key: this.apiKey
         }
@@ -113,8 +113,7 @@ class TMDBService {
         total_results: data.total_results,
         total_pages: data.total_pages,
         current_page: data.page,
-        results_count: data.results?.length || 0,
-        sample_titles: data.results?.slice(0, 3)?.map(m => `${m.title} (${m.vote_average})`) || []
+        results_count: data.results?.length || 0
       });
       
       return data;
@@ -637,28 +636,8 @@ class TMDBService {
       return response.data.genres;
     } catch (error) {
       console.error('TMDB Genres Error:', error.message);
-      // Fallback to static genres
-      return [
-        { id: 28, name: "Action" },
-        { id: 12, name: "Adventure" },
-        { id: 16, name: "Animation" },
-        { id: 35, name: "Comedy" },
-        { id: 80, name: "Crime" },
-        { id: 99, name: "Documentary" },
-        { id: 18, name: "Drama" },
-        { id: 10751, name: "Family" },
-        { id: 14, name: "Fantasy" },
-        { id: 36, name: "History" },
-        { id: 27, name: "Horror" },
-        { id: 10402, name: "Music" },
-        { id: 9648, name: "Mystery" },
-        { id: 10749, name: "Romance" },
-        { id: 878, name: "Science Fiction" },
-        { id: 10770, name: "TV Movie" },
-        { id: 53, name: "Thriller" },
-        { id: 10752, name: "War" },
-        { id: 37, name: "Western" }
-      ];
+      console.log('⚠️  TMDB Genres API unavailable - returning empty genres list');
+      return [];
     }
   }
 
@@ -988,95 +967,13 @@ class TMDBService {
 
   // Fallback method when API fails
   getFallbackData(page = 1) {
-    // Provide sample movie data for testing when TMDB API is not available
-    const sampleMovies = [
-      {
-        id: 1,
-        title: "The Avengers",
-        original_title: "The Avengers",
-        overview: "Earth's mightiest heroes must come together and learn to fight as a team if they are going to stop the mischievous Loki and his alien army from enslaving humanity.",
-        poster_path: "/cezWGskPY5x7GaglTTRN4Fugfb8.jpg",
-        release_date: "2012-04-25",
-        vote_average: 7.7,
-        genre_ids: [28, 12, 878]
-      },
-      {
-        id: 2,
-        title: "Avengers: Age of Ultron",
-        original_title: "Avengers: Age of Ultron",
-        overview: "When Tony Stark tries to jumpstart a dormant peacekeeping program, things go awry and Earth's Mightiest Heroes are put to the ultimate test.",
-        poster_path: "/4ssDuvEDkSArWEdyBl2X5EHvYKU.jpg",
-        release_date: "2015-04-22",
-        vote_average: 7.3,
-        genre_ids: [28, 12, 878]
-      },
-      {
-        id: 3,
-        title: "Avengers: Infinity War",
-        original_title: "Avengers: Infinity War",
-        overview: "As the Avengers and their allies have continued to protect the world from threats too large for any one hero to handle, a new danger has emerged from the cosmic shadows: Thanos.",
-        poster_path: "/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg",
-        release_date: "2018-04-25",
-        vote_average: 8.3,
-        genre_ids: [28, 12, 878]
-      },
-      {
-        id: 4,
-        title: "Avengers: Endgame",
-        original_title: "Avengers: Endgame",
-        overview: "After the devastating events of Infinity War, the universe is in ruins due to the efforts of the Mad Titan, Thanos. With the help of remaining allies, the Avengers must assemble once more in order to undo Thanos' actions and restore order to the universe once and for all.",
-        poster_path: "/or06FN3Dka5tukK1e9sl16pB3iy.jpg",
-        release_date: "2019-04-24",
-        vote_average: 8.4,
-        genre_ids: [28, 12, 18]
-      },
-      {
-        id: 5,
-        title: "Iron Man",
-        original_title: "Iron Man",
-        overview: "After being held captive in an Afghan cave, billionaire engineer Tony Stark creates a unique weaponized suit of armor to fight evil.",
-        poster_path: "/78lPtwv72eTNqFW9COBYI0dWDJa.jpg",
-        release_date: "2008-04-30",
-        vote_average: 7.6,
-        genre_ids: [28, 12, 878]
-      },
-      {
-        id: 6,
-        title: "Spider-Man: No Way Home",
-        original_title: "Spider-Man: No Way Home",
-        overview: "Peter Parker is unmasked and no longer able to separate his normal life from the high-stakes of being a super-hero. When he asks for help from Doctor Strange the stakes become even more dangerous, forcing him to discover what it truly means to be Spider-Man.",
-        poster_path: "/1g0dhYtq4irTY1GPXvft6k4YLjm.jpg",
-        release_date: "2021-12-15",
-        vote_average: 8.1,
-        genre_ids: [28, 12, 878]
-      },
-      {
-        id: 7,
-        title: "Thor: Ragnarok",
-        original_title: "Thor: Ragnarok",
-        overview: "Thor is imprisoned on the other side of the universe and finds himself in a race against time to get back to Asgard to stop Ragnarok.",
-        poster_path: "/rzRwTcFvttcN1ZpX2xv4j3tSdJu.jpg",
-        release_date: "2017-10-25",
-        vote_average: 7.6,
-        genre_ids: [28, 12, 35, 878]
-      },
-      {
-        id: 8,
-        title: "Black Panther",
-        original_title: "Black Panther",
-        overview: "King T'Challa returns home from America to the reclusive, technologically advanced African nation of Wakanda to serve as his country's new leader.",
-        poster_path: "/uxzzxijgPIY7slzFvMotPv8wjKA.jpg",
-        release_date: "2018-02-13",
-        vote_average: 7.3,
-        genre_ids: [28, 12, 18, 878]
-      }
-    ];
-
+    // Return empty result when TMDB API is not available
+    console.log('⚠️  TMDB API unavailable - returning empty results');
     return {
-      results: sampleMovies,
+      results: [],
       page: page,
-      total_pages: 1,
-      total_results: sampleMovies.length
+      total_pages: 0,
+      total_results: 0
     };
   }
 }

@@ -29,9 +29,11 @@ const Footer = () => {
                 <Github className="h-5 w-5" />
               </a>
               <a
-                href="mailto:contact@cinemate.com"
+                href="https://mail.google.com/mail/?view=cm&fs=1&to=vishal3012006@gmail.com"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-gray-400 hover:text-primary-500 transition-colors duration-300"
-                title="Contact Us"
+                title="Contact Me"
               >
                 <Mail className="h-5 w-5" />
               </a>

@@ -27,6 +27,8 @@ const Home = () => {
   const [heroMovie, setHeroMovie] = useState(null);
   const [filteredMovies, setFilteredMovies] = useState([]);
   const [shuffledMovies, setShuffledMovies] = useState([]); // New state for randomized movies
+  const [sortedTopRatedMovies, setSortedTopRatedMovies] = useState([]); // Sorted top-rated movies by rating
+  const [sortedPopularMovies, setSortedPopularMovies] = useState([]); // Sorted popular movies by popularity
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState(getDefaultFilters());
   const [currentPage, setCurrentPage] = useState(1);
@@ -98,6 +100,34 @@ const Home = () => {
     setFilteredMovies(filtered);
   }, [shuffledMovies, filters]);
 
+  // Sort top-rated movies by rating in descending order
+  useEffect(() => {
+    if (Array.isArray(topRatedMovies) && topRatedMovies.length > 0) {
+      const sorted = [...topRatedMovies].sort((a, b) => {
+        const ratingA = a.rating || a.vote_average || 0;
+        const ratingB = b.rating || b.vote_average || 0;
+        return ratingB - ratingA; // Descending order (highest rating first)
+      });
+      setSortedTopRatedMovies(sorted);
+    } else {
+      setSortedTopRatedMovies([]);
+    }
+  }, [topRatedMovies]);
+
+  // Sort popular movies by popularity in descending order
+  useEffect(() => {
+    if (Array.isArray(popularMovies) && popularMovies.length > 0) {
+      const sorted = [...popularMovies].sort((a, b) => {
+        const popularityA = a.popularity || 0;
+        const popularityB = b.popularity || 0;
+        return popularityB - popularityA; // Descending order (highest popularity first)
+      });
+      setSortedPopularMovies(sorted);
+    } else {
+      setSortedPopularMovies([]);
+    }
+  }, [popularMovies]);
+
   const handleFilterChange = (filterType, value) => {
     setFilters(prev => ({
       ...prev,
@@ -126,7 +156,7 @@ const Home = () => {
       // Update page after slide out begins
       if (direction === 'next') {
         setTopRatedCurrentPage(prev => {
-          const newPage = Math.min(Math.ceil(topRatedMovies.length / topRatedMoviesPerPage), prev + 1);
+          const newPage = Math.min(Math.ceil(sortedTopRatedMovies.length / topRatedMoviesPerPage), prev + 1);
           console.log('📄 Next page:', prev, '->', newPage);
           return newPage;
         });
@@ -162,7 +192,7 @@ const Home = () => {
       // Update page after slide out begins
       if (direction === 'next') {
         setPopularCurrentPage(prev => {
-          const newPage = Math.min(Math.ceil(popularMovies.length / popularMoviesPerPage), prev + 1);
+          const newPage = Math.min(Math.ceil(sortedPopularMovies.length / popularMoviesPerPage), prev + 1);
           console.log('📄 Next popular page:', prev, '->', newPage);
           return newPage;
         });
@@ -430,7 +460,7 @@ const Home = () => {
           </div>
 
           {/* Top Rated Movies Section */}
-          {Array.isArray(topRatedMovies) && topRatedMovies.length > 0 && (
+          {Array.isArray(sortedTopRatedMovies) && sortedTopRatedMovies.length > 0 && (
             <div className="mb-16">
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center space-x-3">
@@ -438,7 +468,7 @@ const Home = () => {
                   <h2 className="text-3xl font-bold text-white">Top Rated</h2>
                 </div>
                 <div className="text-sm text-gray-400">
-                  {topRatedMovies.length} movies loaded | Showing {Math.min((topRatedCurrentPage - 1) * topRatedMoviesPerPage + 1, topRatedMovies.length)} - {Math.min(topRatedCurrentPage * topRatedMoviesPerPage, topRatedMovies.length)} of {topRatedMovies.length}
+                  {sortedTopRatedMovies.length} movies loaded | Showing {Math.min((topRatedCurrentPage - 1) * topRatedMoviesPerPage + 1, sortedTopRatedMovies.length)} - {Math.min(topRatedCurrentPage * topRatedMoviesPerPage, sortedTopRatedMovies.length)} of {sortedTopRatedMovies.length}
                 </div>
               </div>
               
@@ -477,7 +507,7 @@ const Home = () => {
                         }`}
                         data-animation-state={`${isAnimating ? 'animating' : 'idle'}-${slideDirection || 'none'}`}
                       >
-                        {topRatedMovies.slice((topRatedCurrentPage - 1) * topRatedMoviesPerPage, topRatedCurrentPage * topRatedMoviesPerPage).map((movie, index) => {
+                        {sortedTopRatedMovies.slice((topRatedCurrentPage - 1) * topRatedMoviesPerPage, topRatedCurrentPage * topRatedMoviesPerPage).map((movie, index) => {
                           // Normalize movie data
                           const normalizedMovie = {
                             ...movie,
@@ -513,7 +543,7 @@ const Home = () => {
                     {/* Right Arrow - Always visible, disabled when on last page */}
                     <button
                       onClick={() => handleTopRatedNavigation('next')}
-                      disabled={isAnimating || topRatedCurrentPage === Math.ceil(topRatedMovies.length / topRatedMoviesPerPage)}
+                      disabled={isAnimating || topRatedCurrentPage === Math.ceil(sortedTopRatedMovies.length / topRatedMoviesPerPage)}
                       className="hidden sm:flex flex-shrink-0 ml-2 lg:ml-4 bg-black/60 hover:bg-black/80 text-white p-2 lg:p-3 rounded-full transition-all duration-300 hover:scale-110 shadow-lg backdrop-blur-sm disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:bg-black/60 z-10 items-center justify-center"
                     >
                       <ChevronRight className="h-5 w-5 lg:h-6 lg:w-6" />
@@ -533,12 +563,12 @@ const Home = () => {
                       </button>
                       
                       <span className="text-gray-400 font-medium">
-                        {topRatedCurrentPage} / {Math.ceil(topRatedMovies.length / topRatedMoviesPerPage)}
+                        {topRatedCurrentPage} / {Math.ceil(sortedTopRatedMovies.length / topRatedMoviesPerPage)}
                       </span>
                       
                       <button
                         onClick={() => handleTopRatedNavigation('next')}
-                        disabled={isAnimating || topRatedCurrentPage === Math.ceil(topRatedMovies.length / topRatedMoviesPerPage)}
+                        disabled={isAnimating || topRatedCurrentPage === Math.ceil(sortedTopRatedMovies.length / topRatedMoviesPerPage)}
                         className="bg-black/60 hover:bg-black/80 text-white p-3 rounded-full transition-all duration-300 hover:scale-110 shadow-lg backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                       >
                         <ChevronRight className="h-6 w-6" />
@@ -546,10 +576,10 @@ const Home = () => {
                     </div>
                     
                     {/* Debug Info */}
-                    {topRatedMovies.length <= 20 && (
+                    {sortedTopRatedMovies.length <= 20 && (
                       <div className="text-center p-4 bg-yellow-900/20 border border-yellow-700 rounded-lg">
                         <div className="text-yellow-400 text-sm mb-2">
-                          ⚠️ Only {topRatedMovies.length} movies loaded (expected 100)
+                          ⚠️ Only {sortedTopRatedMovies.length} movies loaded (expected 100)
                         </div>
                         <button
                           onClick={fetchTopRatedMovies}
@@ -562,9 +592,9 @@ const Home = () => {
                     )}
                     
                     {/* Page Indicators */}
-                    {Math.ceil(topRatedMovies.length / topRatedMoviesPerPage) > 1 && (
+                    {Math.ceil(sortedTopRatedMovies.length / topRatedMoviesPerPage) > 1 && (
                       <div className="flex justify-center items-center space-x-2">
-                        {Array.from({ length: Math.ceil(topRatedMovies.length / topRatedMoviesPerPage) }, (_, i) => i + 1).map((pageNum) => (
+                        {Array.from({ length: Math.ceil(sortedTopRatedMovies.length / topRatedMoviesPerPage) }, (_, i) => i + 1).map((pageNum) => (
                           <button
                             key={pageNum}
                             onClick={() => {
@@ -596,7 +626,7 @@ const Home = () => {
           )}
 
           {/* Popular Movies Section */}
-          {Array.isArray(popularMovies) && popularMovies.length > 0 && (
+          {Array.isArray(sortedPopularMovies) && sortedPopularMovies.length > 0 && (
             <div className="mb-16">
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center space-x-3">
@@ -604,7 +634,7 @@ const Home = () => {
                   <h2 className="text-3xl font-bold text-white">Popular</h2>
                 </div>
                 <div className="text-sm text-gray-400">
-                  {popularMovies.length} movies loaded | Showing {Math.min((popularCurrentPage - 1) * popularMoviesPerPage + 1, popularMovies.length)} - {Math.min(popularCurrentPage * popularMoviesPerPage, popularMovies.length)} of {popularMovies.length}
+                  {sortedPopularMovies.length} movies loaded | Showing {Math.min((popularCurrentPage - 1) * popularMoviesPerPage + 1, sortedPopularMovies.length)} - {Math.min(popularCurrentPage * popularMoviesPerPage, sortedPopularMovies.length)} of {sortedPopularMovies.length}
                 </div>
               </div>
               
@@ -643,7 +673,7 @@ const Home = () => {
                         }`}
                         data-animation-state={`${popularIsAnimating ? 'animating' : 'idle'}-${popularSlideDirection || 'none'}`}
                       >
-                        {popularMovies.slice((popularCurrentPage - 1) * popularMoviesPerPage, popularCurrentPage * popularMoviesPerPage).map((movie, index) => {
+                        {sortedPopularMovies.slice((popularCurrentPage - 1) * popularMoviesPerPage, popularCurrentPage * popularMoviesPerPage).map((movie, index) => {
                           // Normalize movie data
                           const normalizedMovie = {
                             ...movie,
@@ -679,7 +709,7 @@ const Home = () => {
                     {/* Right Arrow - Always visible, disabled when on last page */}
                     <button
                       onClick={() => handlePopularNavigation('next')}
-                      disabled={popularIsAnimating || popularCurrentPage === Math.ceil(popularMovies.length / popularMoviesPerPage)}
+                      disabled={popularIsAnimating || popularCurrentPage === Math.ceil(sortedPopularMovies.length / popularMoviesPerPage)}
                       className="hidden sm:flex flex-shrink-0 ml-2 lg:ml-4 bg-black/60 hover:bg-black/80 text-white p-2 lg:p-3 rounded-full transition-all duration-300 hover:scale-110 shadow-lg backdrop-blur-sm disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:bg-black/60 z-10 items-center justify-center"
                     >
                       <ChevronRight className="h-5 w-5 lg:h-6 lg:w-6" />
@@ -698,11 +728,11 @@ const Home = () => {
                         Previous
                       </button>
                       <span className="text-gray-400 text-sm">
-                        Page {popularCurrentPage} of {Math.ceil(popularMovies.length / popularMoviesPerPage)}
+                        Page {popularCurrentPage} of {Math.ceil(sortedPopularMovies.length / popularMoviesPerPage)}
                       </span>
                       <button
                         onClick={() => handlePopularNavigation('next')}
-                        disabled={popularIsAnimating || popularCurrentPage === Math.ceil(popularMovies.length / popularMoviesPerPage)}
+                        disabled={popularIsAnimating || popularCurrentPage === Math.ceil(sortedPopularMovies.length / popularMoviesPerPage)}
                         className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-900 disabled:text-gray-600 text-white rounded-lg transition-colors"
                       >
                         Next
@@ -710,9 +740,9 @@ const Home = () => {
                     </div>
 
                     {/* Page Indicators (Desktop) */}
-                    {Math.ceil(popularMovies.length / popularMoviesPerPage) > 1 && (
+                    {Math.ceil(sortedPopularMovies.length / popularMoviesPerPage) > 1 && (
                       <div className="hidden sm:flex justify-center items-center space-x-2">
-                        {Array.from({ length: Math.ceil(popularMovies.length / popularMoviesPerPage) }, (_, index) => {
+                        {Array.from({ length: Math.ceil(sortedPopularMovies.length / popularMoviesPerPage) }, (_, index) => {
                           const pageNum = index + 1;
                           return (
                             <button

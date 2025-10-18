@@ -1,18 +1,43 @@
-import React from 'react';
-import { BarChart3, TrendingUp, Heart, Clock, Star, Film, Image } from 'lucide-react';
+import React, { useState } from 'react';
+import { BarChart3, TrendingUp, Heart, Star, Film, Image, Clock } from 'lucide-react';
 import { useMovie } from '../context/MovieContext';
 import { useAuth } from '../context/AuthContext';
 
 const UserStats = () => {
   const { favorites, getFavoriteGenres, watchHistory } = useMovie();
   const { user } = useAuth();
+  const [showAllActivity, setShowAllActivity] = useState(false);
 
   if (!user) return null;
 
   const favoriteGenres = getFavoriteGenres();
-  const totalWatchTime = watchHistory.reduce((total, movie) => {
-    return total + (movie.duration || 120); // Default 120 minutes if no duration
-  }, 0);
+
+  // Deduplicate watch history - keep only the most recent watch of each movie
+  const uniqueWatchHistory = watchHistory.reduce((acc, movie) => {
+    const movieId = movie.id || movie.movieId;
+    const movieTitle = movie.title;
+    
+    const existingIndex = acc.findIndex(item => {
+      const itemId = item.id || item.movieId;
+      const itemTitle = item.title;
+      // Match by both ID and title for more precise deduplication
+      return itemId === movieId && itemTitle === movieTitle;
+    });
+    
+    if (existingIndex !== -1) {
+      // Keep the one with more recent watchedAt time
+      const existingWatchTime = new Date(acc[existingIndex].watchedAt || 0);
+      const currentWatchTime = new Date(movie.watchedAt || 0);
+      
+      if (currentWatchTime > existingWatchTime) {
+        acc[existingIndex] = movie;
+      }
+    } else {
+      acc.push(movie);
+    }
+    
+    return acc;
+  }, []).sort((a, b) => new Date(b.watchedAt || 0) - new Date(a.watchedAt || 0)); // Sort by most recent first
 
   const averageRating = favorites.length > 0 
     ? (favorites.reduce((sum, movie) => sum + (movie.rating || movie.vote_average || 0), 0) / favorites.length).toFixed(1)
@@ -31,25 +56,11 @@ const UserStats = () => {
 
   const stats = [
     {
-      label: 'Movies Favorited',
+      label: 'Favorites',
       value: favorites.length,
       icon: Heart,
       color: 'text-red-500',
       bgColor: 'bg-red-500/10'
-    },
-    {
-      label: 'Movies Watched',
-      value: watchHistory.length,
-      icon: Film,
-      color: 'text-blue-500',
-      bgColor: 'bg-blue-500/10'
-    },
-    {
-      label: 'Hours Watched',
-      value: Math.round(totalWatchTime / 60),
-      icon: Clock,
-      color: 'text-green-500',
-      bgColor: 'bg-green-500/10'
     },
     {
       label: 'Avg Rating',
@@ -57,6 +68,13 @@ const UserStats = () => {
       icon: Star,
       color: 'text-yellow-500',
       bgColor: 'bg-yellow-500/10'
+    },
+    {
+      label: 'Viewed',
+      value: uniqueWatchHistory.length,
+      icon: Film,
+      color: 'text-blue-500',
+      bgColor: 'bg-blue-500/10'
     }
   ];
 
@@ -69,7 +87,7 @@ const UserStats = () => {
           <h3 className="text-xl font-semibold text-white">Your Movie Stats</h3>
         </div>
         
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {stats.map((stat) => (
             <div key={stat.label} className="text-center">
               <div className={`inline-flex items-center justify-center w-12 h-12 ${stat.bgColor} rounded-lg mb-3`}>
@@ -112,7 +130,7 @@ const UserStats = () => {
       )}
 
       {/* Recent Activity */}
-      {watchHistory.length > 0 && (
+      {uniqueWatchHistory.length > 0 && (
         <div className="bg-gray-900/50 backdrop-blur-md border border-gray-700 rounded-xl p-6">
           <div className="flex items-center space-x-3 mb-6">
             <Clock className="h-6 w-6 text-primary-500" />
@@ -120,7 +138,7 @@ const UserStats = () => {
           </div>
           
           <div className="space-y-4">
-            {watchHistory.slice(0, 5).map((movie) => (
+            {(showAllActivity ? uniqueWatchHistory : uniqueWatchHistory.slice(0, 5)).map((movie) => (
               <div key={`${movie.id}-${movie.watchedAt}`} className="flex items-center gap-4 p-4 bg-gray-800/30 rounded-lg hover:bg-gray-800/50 transition-colors duration-200">
                 {/* Movie Poster */}
                 <div className="w-14 h-20 bg-gray-700 rounded-md flex items-center justify-center overflow-hidden flex-shrink-0 shadow-lg">
@@ -163,10 +181,13 @@ const UserStats = () => {
             ))}
           </div>
           
-          {watchHistory.length > 5 && (
+          {uniqueWatchHistory.length > 5 && (
             <div className="mt-4 text-center">
-              <button className="text-primary-400 hover:text-primary-300 transition-colors duration-300">
-                View All Activity
+              <button 
+                onClick={() => setShowAllActivity(!showAllActivity)}
+                className="text-primary-400 hover:text-primary-300 transition-colors duration-300 font-medium"
+              >
+                {showAllActivity ? 'Show Less' : 'View All Activity'}
               </button>
             </div>
           )}

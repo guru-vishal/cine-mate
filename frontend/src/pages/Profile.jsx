@@ -67,7 +67,7 @@ const Profile = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen pt-24 px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md mx-auto text-center py-20">
           <User className="h-24 w-24 text-gray-600 mx-auto mb-6" />
           <h2 className="text-2xl font-semibold text-gray-400 mb-4">Access Denied</h2>
@@ -78,7 +78,7 @@ const Profile = () => {
   }
 
   return (
-    <div className="min-h-screen pt-24 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-24 pb-16 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">

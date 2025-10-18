@@ -1,5 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
+import toast from 'react-hot-toast';
+import { Heart, HeartOff, Trash2 } from 'lucide-react';
 import { movieService } from '../services/movieService';
 import { searchHistoryService } from '../services/searchHistoryService';
 import { watchHistoryService } from '../services/watchHistoryService';
@@ -95,12 +97,35 @@ const movieReducer = (state, action) => {
     case 'SET_PERSONALIZED_RECOMMENDATIONS':
       return { ...state, personalizedRecommendations: action.payload };
     case 'ADD_TO_WATCH_HISTORY': {
-      const newHistory = [action.payload, ...state.watchHistory.filter(item => item.id !== action.payload.id)].slice(0, 50);
+      // Create a unique identifier for the movie to avoid conflicts
+      const newMovieId = action.payload.id || action.payload.movieId;
+      const newMovieTitle = action.payload.title;
+      
+      // Remove any existing entry for this specific movie (match by both ID AND title for safety)
+      const filteredHistory = state.watchHistory.filter(item => {
+        const existingMovieId = item.id || item.movieId;
+        const existingMovieTitle = item.title;
+        
+        // Only remove if both ID and title match (more precise matching)
+        return !(existingMovieId === newMovieId && existingMovieTitle === newMovieTitle);
+      });
+      
+      // Add the new entry at the beginning (most recent)
+      const newHistory = [action.payload, ...filteredHistory].slice(0, 50);
+      
+      // Sort by watchedAt time to ensure proper chronological order
+      newHistory.sort((a, b) => new Date(b.watchedAt || 0) - new Date(a.watchedAt || 0));
+      
       localStorage.setItem('watchHistory', JSON.stringify(newHistory));
       return { ...state, watchHistory: newHistory };
     }
-    case 'SET_WATCH_HISTORY':
-      return { ...state, watchHistory: action.payload };
+    case 'SET_WATCH_HISTORY': {
+      // Sort the watch history by watchedAt time (most recent first)
+      const sortedHistory = [...action.payload].sort((a, b) => 
+        new Date(b.watchedAt || 0) - new Date(a.watchedAt || 0)
+      );
+      return { ...state, watchHistory: sortedHistory };
+    }
     case 'SET_GENRES':
       return { ...state, genres: action.payload };
     case 'SET_USER_PREFERENCES':
@@ -688,6 +713,16 @@ export const MovieProvider = ({ children }) => {
           
           if (data.success) {
             dispatch({ type: 'ADD_TO_FAVORITES', payload: movie });
+            // Show success toast
+            toast.success(`"${movie.title}" added to favorites!`, {
+              duration: 3000,
+              icon: <Heart className="h-5 w-5 text-red-500" />,
+              style: {
+                background: '#1e293b',
+                color: '#f1f5f9',
+                border: '1px solid #ef4444',
+              },
+            });
             // Refresh personalized recommendations after adding favorite
             setTimeout(() => getPersonalizedRecommendations(), 1000);
           } else {
@@ -695,11 +730,22 @@ export const MovieProvider = ({ children }) => {
           }
         } catch (error) {
           console.error('Error adding to favorites:', error);
+          toast.error('Failed to add to favorites. Please try again.');
           dispatch({ type: 'SET_ERROR', payload: 'Failed to add to favorites. Please try again.' });
         }
       } else {
         // Add to localStorage for guest users
         dispatch({ type: 'ADD_TO_FAVORITES', payload: movie });
+        // Show success toast for guest users
+        toast.success(`"${movie.title}" added to favorites!`, {
+          duration: 3000,
+          icon: <Heart className="h-5 w-5 text-red-500" />,
+          style: {
+            background: '#1e293b',
+            color: '#f1f5f9',
+            border: '1px solid #ef4444',
+          },
+        });
       }
     }
   };
@@ -718,7 +764,21 @@ export const MovieProvider = ({ children }) => {
         const data = await response.json();
         
         if (data.success) {
+          // Find the movie title before removing it
+          const removedMovie = state.favorites.find(fav => fav.id === movieId);
+          const movieTitle = removedMovie?.title || 'Movie';
+          
           dispatch({ type: 'REMOVE_FROM_FAVORITES', payload: movieId });
+          // Show success toast
+          toast.success(`"${movieTitle}" removed from favorites!`, {
+            duration: 3000,
+            icon: <HeartOff className="h-5 w-5 text-gray-500" />,
+            style: {
+              background: '#1e293b',
+              color: '#f1f5f9',
+              border: '1px solid #6b7280',
+            },
+          });
           // Refresh personalized recommendations after removing favorite
           setTimeout(() => getPersonalizedRecommendations(), 1000);
         } else {
@@ -726,11 +786,26 @@ export const MovieProvider = ({ children }) => {
         }
       } catch (error) {
         console.error('Error removing from favorites:', error);
+        toast.error('Failed to remove from favorites. Please try again.');
         dispatch({ type: 'SET_ERROR', payload: 'Failed to remove from favorites. Please try again.' });
       }
     } else {
+      // Find the movie title before removing it for guest users
+      const removedMovie = state.favorites.find(fav => fav.id === movieId);
+      const movieTitle = removedMovie?.title || 'Movie';
+      
       // Remove from localStorage for guest users
       dispatch({ type: 'REMOVE_FROM_FAVORITES', payload: movieId });
+      // Show success toast for guest users
+      toast.success(`"${movieTitle}" removed from favorites!`, {
+        duration: 3000,
+        icon: <HeartOff className="h-5 w-5 text-gray-500" />,
+        style: {
+          background: '#1e293b',
+          color: '#f1f5f9',
+          border: '1px solid #6b7280',
+        },
+      });
     }
   };
 
@@ -748,7 +823,18 @@ export const MovieProvider = ({ children }) => {
         const data = await response.json();
         
         if (data.success) {
+          const favoritesCount = state.favorites.length;
           dispatch({ type: 'CLEAR_ALL_FAVORITES' });
+          // Show success toast
+          toast.success(`All ${favoritesCount} favorite${favoritesCount !== 1 ? 's' : ''} cleared!`, {
+            duration: 3000,
+            icon: <Trash2 className="h-5 w-5 text-red-600" />,
+            style: {
+              background: '#1e293b',
+              color: '#f1f5f9',
+              border: '1px solid #dc2626',
+            },
+          });
           // Refresh personalized recommendations after clearing favorites
           setTimeout(() => getPersonalizedRecommendations(), 1000);
         } else {
@@ -756,11 +842,23 @@ export const MovieProvider = ({ children }) => {
         }
       } catch (error) {
         console.error('Error clearing all favorites:', error);
+        toast.error('Failed to clear favorites. Please try again.');
         dispatch({ type: 'SET_ERROR', payload: 'Failed to clear favorites. Please try again.' });
       }
     } else {
       // Clear all favorites from localStorage for guest users
+      const favoritesCount = state.favorites.length;
       dispatch({ type: 'CLEAR_ALL_FAVORITES' });
+      // Show success toast for guest users
+      toast.success(`All ${favoritesCount} favorite${favoritesCount !== 1 ? 's' : ''} cleared!`, {
+        duration: 3000,
+        icon: <Trash2 className="h-5 w-5 text-red-600" />,
+        style: {
+          background: '#1e293b',
+          color: '#f1f5f9',
+          border: '1px solid #dc2626',
+        },
+      });
     }
   };
 

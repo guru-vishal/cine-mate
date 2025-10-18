@@ -9,8 +9,8 @@ const connectDB = async () => {
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
-    // Continue without MongoDB for development with mock data
-    console.log('⚠️  Continuing without MongoDB - using mock data');
+    console.error('❌ MongoDB is required for CineMate to function properly');
+    throw error;
   }
 };
 
