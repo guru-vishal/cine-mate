@@ -73,13 +73,11 @@ export const estimateDuration = (genres) => {
 export const getMovieDuration = (movie) => {
   // Priority 1: If we have actual runtime data from TMDB, use it
   if (movie.runtime && movie.runtime > 0) {
-    console.log(`Using actual runtime for ${movie.title}: ${movie.runtime} minutes`);
     return movie.runtime;
   }
 
   // Priority 2: If we have stored duration data, use it
   if (movie.duration && movie.duration > 0) {
-    console.log(`Using stored duration for ${movie.title}: ${movie.duration} minutes`);
     return movie.duration;
   }
 
@@ -90,6 +88,5 @@ export const getMovieDuration = (movie) => {
                 [];
                 
   const estimated = estimateDuration(genres);
-  console.log(`Estimating duration for ${movie.title}: ${estimated} minutes (genres: ${genres.map(g => g.name || g).join(', ')})`);
   return estimated;
 };

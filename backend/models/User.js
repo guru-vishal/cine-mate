@@ -39,6 +39,24 @@ const userSchema = new mongoose.Schema({
     rating: Number,
     year: String,
     genre: [String],
+    duration: String, // Movie duration to preserve calculated values
+    addedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  watchlist: [{
+    movieId: {
+      type: String,
+      required: true
+    },
+    title: String,
+    poster: String, // Full image URL (e.g., https://image.tmdb.org/t/p/w500/abc123.jpg)
+    description: String,
+    rating: Number,
+    year: String,
+    genre: [String],
+    duration: String, // Movie duration to preserve calculated values
     addedAt: {
       type: Date,
       default: Date.now
@@ -143,7 +161,8 @@ userSchema.methods.addToFavorites = async function(movieData) {
       description: movieData.description,
       rating: movieData.rating,
       year: movieData.year,
-      genre: movieData.genre || []
+      genre: movieData.genre || [],
+      duration: movieData.duration
     };
     
     console.log('Creating favorite item:', JSON.stringify(favoriteItem, null, 2));
@@ -190,6 +209,53 @@ userSchema.methods.getFavoriteGenres = function() {
     .sort(([,a], [,b]) => b - a)
     .slice(0, 5)
     .map(([genre]) => genre);
+};
+
+// Add movie to watchlist
+userSchema.methods.addToWatchlist = async function(movieData) {
+  console.log('=== WATCHLIST USER MODEL DEBUG ===');
+  console.log('addToWatchlist received:', JSON.stringify(movieData, null, 2));
+  
+  const existingIndex = this.watchlist.findIndex(
+    item => item.movieId === movieData.id.toString()
+  );
+  
+  if (existingIndex === -1) {
+    const watchlistItem = {
+      movieId: movieData.id.toString(),
+      title: movieData.title,
+      poster: movieData.poster,
+      description: movieData.description,
+      rating: movieData.rating,
+      year: movieData.year,
+      genre: movieData.genre || [],
+      duration: movieData.duration
+    };
+    
+    console.log('Creating watchlist item:', JSON.stringify(watchlistItem, null, 2));
+    this.watchlist.push(watchlistItem);
+    
+    console.log('Watchlist array before save:', JSON.stringify(this.watchlist, null, 2));
+  }
+  
+  const result = await this.save();
+  console.log('Watchlist array after save:', JSON.stringify(this.watchlist, null, 2));
+  console.log('=== END WATCHLIST USER MODEL DEBUG ===');
+  
+  return result;
+};
+
+// Remove movie from watchlist
+userSchema.methods.removeFromWatchlist = async function(movieId) {
+  this.watchlist = this.watchlist.filter(
+    item => item.movieId !== movieId.toString()
+  );
+  return await this.save();
+};
+
+// Check if movie is in watchlist
+userSchema.methods.isInWatchlist = function(movieId) {
+  return this.watchlist.some(item => item.movieId === movieId.toString());
 };
 
 // Remove sensitive data when converting to JSON

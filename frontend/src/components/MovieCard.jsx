@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Heart, Star, Play, Image, Clock } from 'lucide-react';
+import { Heart, Star, Play, Image, Clock, Bookmark } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useMovie } from '../context/MovieContext';
 import { useAuth } from '../context/AuthContext';
 import { convertGenreIdsToNames } from '../utils/genreMapping';
 import { formatDuration } from '../utils/durationHelper';
-import { getMovieDuration } from '../utils/durationEstimator';
+import { getCachedMovieDuration } from '../utils/durationCache';
 
 // Helper function to normalize movie data from different sources
 const normalizeMovieData = (movie) => {
@@ -34,23 +35,24 @@ const normalizeMovieData = (movie) => {
     id: movie.id,
     title: movie.title || 'Untitled Movie',
     poster_url: posterUrl,
-    rating: (movie.rating || movie.vote_average) ? 
-      parseFloat(movie.rating || movie.vote_average).toFixed(1) : '0.0',
-    duration: getMovieDuration(movie), // Get actual or estimated duration
+    rating: (movie.rating || movie.vote_average) && (movie.rating || movie.vote_average) > 0 ? 
+      parseFloat(movie.rating || movie.vote_average).toFixed(1) : 'N/A',
+    duration: getCachedMovieDuration(movie), // Use cached duration to prevent recalculation
     year: movie.year || (movie.release_date ? new Date(movie.release_date).getFullYear() : ''),
     description: movie.description || movie.overview || 'No description available.',
     genres: genres
   };
 };
 
-const MovieCard = ({ movie }) => {
+const MovieCard = ({ movie, showRemoveFromWatchlist = false, onRemoveFromWatchlist }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { favorites, addToFavorites, removeFromFavorites } = useMovie();
+  const { favorites, addToFavorites, removeFromFavorites, watchlist, addToWatchlist, removeFromWatchlist } = useMovie();
   const { user } = useAuth();
   const [imageError, setImageError] = useState(false);
   const normalizedMovie = normalizeMovieData(movie);
   const isFavorite = favorites.some(fav => fav.id === movie.id);
+  const isInWatchlist = watchlist.some(item => item.id === movie.id);
 
   const handleImageError = () => {
     setImageError(true);
@@ -77,6 +79,36 @@ const MovieCard = ({ movie }) => {
       removeFromFavorites(movie.id);
     } else {
       addToFavorites(movie);
+    }
+  };
+
+  const handleWatchlistToggle = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Check if user is authenticated
+    if (!user) {
+      toast.error('Please log in to manage your watchlist', {
+        duration: 4000,
+        icon: '🔐',
+        style: {
+          background: '#1e293b',
+          color: '#f1f5f9',
+          border: '1px solid #dc2626',
+        },
+        action: {
+          label: 'Login',
+          onClick: () => navigate('/login')
+        }
+      });
+      return;
+    }
+
+    // User is authenticated, proceed with watchlist toggle
+    if (isInWatchlist) {
+      removeFromWatchlist(movie.id);
+    } else {
+      addToWatchlist(movie);
     }
   };
 
@@ -109,16 +141,30 @@ const MovieCard = ({ movie }) => {
                     {formatDuration(normalizedMovie.duration)}
                   </span>
                 </div>
-                <button
-                  onClick={handleFavoriteToggle}
-                  className={`p-2 rounded-full transition-all duration-300 ${
-                    isFavorite
-                      ? 'bg-primary-500 text-white'
-                      : 'bg-white/20 text-white hover:bg-primary-500'
-                  }`}
-                >
-                  <Heart className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />
-                </button>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={handleFavoriteToggle}
+                    className={`p-2 rounded-full transition-all duration-300 ${
+                      isFavorite
+                        ? 'bg-primary-500 text-white'
+                        : 'bg-white/20 text-white hover:bg-primary-500'
+                    }`}
+                    title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                  >
+                    <Heart className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />
+                  </button>
+                  <button
+                    onClick={handleWatchlistToggle}
+                    className={`p-2 rounded-full transition-all duration-300 ${
+                      isInWatchlist
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-white/20 text-white hover:bg-blue-500'
+                    }`}
+                    title={isInWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+                  >
+                    <Bookmark className={`h-4 w-4 ${isInWatchlist ? 'fill-current' : ''}`} />
+                  </button>
+                </div>
               </div>
               
               {/* Play button */}

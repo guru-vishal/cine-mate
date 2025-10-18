@@ -82,7 +82,6 @@ export const movieService = {
       if (requestCache.has(cacheKey)) {
         const { timestamp, promise } = requestCache.get(cacheKey);
         if (now - timestamp < CACHE_DURATION) {
-          console.log('Returning cached request for:', cacheKey);
           return promise;
         } else {
           requestCache.delete(cacheKey);
@@ -108,7 +107,6 @@ export const movieService = {
   // Progressive movies loading with real-time results
   async getMoviesProgressive(onProgress) {
     try {
-      console.log(`🎬 Frontend: Starting progressive movie loading`);
 
       const url = `${API_URL}/movies/progressive`;
       
@@ -133,7 +131,6 @@ export const movieService = {
               allResults.push(...data.data);
               hasReceivedData = true;
               
-              console.log(`📥 Progressive: Received ${data.data.length} results from ${data.source} (page ${data.page}), total: ${allResults.length}`);
               
               // Call progress callback with current results
               if (onProgress) {
@@ -150,7 +147,6 @@ export const movieService = {
 
             // If loading is complete, resolve
             if (data.is_complete) {
-              console.log(`✅ Progressive movie loading complete: ${allResults.length} total movies`);
               eventSource.close();
               resolve({
                 success: true,
@@ -166,7 +162,6 @@ export const movieService = {
         };
 
         eventSource.addEventListener('close', () => {
-          console.log('Progressive movies connection closed');
           eventSource.close();
           if (!hasReceivedData) {
             reject(new Error('No data received from progressive movie loading'));
@@ -182,7 +177,6 @@ export const movieService = {
         // Timeout after 45 seconds (longer than search due to more data)
         setTimeout(() => {
           if (eventSource.readyState !== EventSource.CLOSED) {
-            console.log('Progressive movies timeout, closing connection');
             eventSource.close();
             if (hasReceivedData) {
               resolve({
@@ -210,7 +204,6 @@ export const movieService = {
         throw new Error('Search query is required');
       }
 
-      console.log(`🔍 Frontend: Starting progressive search for "${query}"`);
 
       const url = `${API_URL}/movies/search/progressive?q=${encodeURIComponent(query.trim())}`;
       
@@ -235,7 +228,6 @@ export const movieService = {
               allResults.push(...data.data);
               hasReceivedData = true;
               
-              console.log(`📥 Progressive: Received ${data.data.length} results (page ${data.current_page}), total: ${allResults.length}`);
               
               // Call progress callback with current results
               if (onProgress) {
@@ -252,7 +244,6 @@ export const movieService = {
 
             // If search is complete, resolve
             if (data.is_complete) {
-              console.log(`✅ Progressive search complete: ${allResults.length} total results`);
               eventSource.close();
               resolve({
                 success: true,
@@ -269,7 +260,6 @@ export const movieService = {
         };
 
         eventSource.addEventListener('close', () => {
-          console.log('Progressive search connection closed');
           eventSource.close();
           if (!hasReceivedData) {
             reject(new Error('No data received from progressive search'));
@@ -285,7 +275,6 @@ export const movieService = {
         // Timeout after 30 seconds
         setTimeout(() => {
           if (eventSource.readyState !== EventSource.CLOSED) {
-            console.log('Progressive search timeout, closing connection');
             eventSource.close();
             if (hasReceivedData) {
               resolve({
@@ -320,14 +309,11 @@ export const movieService = {
       if (limit !== null) {
         params.page = page;
         params.limit = limit;
-        console.log(`🔍 Frontend: Searching with pagination - page: ${page}, limit: ${limit}`);
       } else {
         // Request all results for comprehensive search
         params.all = 'true';
-        console.log(`🔍 Frontend: Requesting comprehensive search (all=true)`);
       }
 
-      console.log(`📤 Frontend: Sending search request with params:`, params);
       
       // Disable caching for search to ensure fresh results
       const response = await api.get('/movies/search', { 
@@ -338,7 +324,6 @@ export const movieService = {
         }
       });
       
-      console.log(`📥 Frontend: Received response with ${response.data?.data?.length || 0} results`);
       return response.data;
     } catch (error) {
       console.error('Error searching movies:', error);
@@ -356,7 +341,6 @@ export const movieService = {
       if (requestCache.has(cacheKey)) {
         const { timestamp, promise } = requestCache.get(cacheKey);
         if (now - timestamp < CACHE_DURATION * 6) { // Cache longer for comprehensive list (30 seconds)
-          console.log('Returning cached comprehensive movie list');
           return promise;
         } else {
           requestCache.delete(cacheKey);

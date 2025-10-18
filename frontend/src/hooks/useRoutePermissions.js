@@ -17,6 +17,8 @@ export const useRoutePermissions = () => {
     // Feature access checks
     canAddToFavorites: !!user,
     canViewFavorites: !!user,
+    canAddToWatchlist: !!user,
+    canViewWatchlist: !!user,
     canEditProfile: !!user,
     canViewProfile: !!user,
     

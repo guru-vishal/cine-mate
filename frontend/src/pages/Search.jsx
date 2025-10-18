@@ -19,7 +19,6 @@ const Search = () => {
   useEffect(() => {
     const searchQuery = searchParams.get('q');
     if (searchQuery) {
-      console.log('🔍 Search page - URL query:', searchQuery);
       setQuery(searchQuery);
       searchMovies(searchQuery);
     }
@@ -28,7 +27,6 @@ const Search = () => {
   const handleSearch = (e) => {
     e.preventDefault();
     if (query.trim()) {
-      console.log('🔍 Search page - Manual search:', query.trim());
       setSearchParams({ q: query.trim() });
     }
   };

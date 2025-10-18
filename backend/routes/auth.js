@@ -64,6 +64,7 @@ router.post('/signup', async (req, res) => {
         name: user.name,
         email: user.email,
         favorites: user.favorites,
+        watchlist: user.watchlist,
         preferences: user.preferences,
         createdAt: user.createdAt
       }
@@ -145,6 +146,7 @@ router.post('/login', async (req, res) => {
         name: user.name,
         email: user.email,
         favorites: user.favorites,
+        watchlist: user.watchlist,
         preferences: user.preferences,
         lastLogin: user.lastLogin
       }
@@ -181,6 +183,7 @@ router.get('/profile', auth, async (req, res) => {
         name: user.name,
         email: user.email,
         favorites: user.favorites,
+        watchlist: user.watchlist,
         preferences: user.preferences,
         watchHistory: user.watchHistory,
         createdAt: user.createdAt,
@@ -226,6 +229,7 @@ router.put('/profile', auth, async (req, res) => {
         name: user.name,
         email: user.email,
         favorites: user.favorites,
+        watchlist: user.watchlist,
         preferences: user.preferences
       }
     });
@@ -448,6 +452,156 @@ router.get('/recommendations', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error getting recommendations'
+    });
+  }
+});
+
+// @route   POST /api/auth/watchlist
+// @desc    Add movie to watchlist
+// @access  Private
+router.post('/watchlist', auth, async (req, res) => {
+  try {
+    const movieData = req.body;
+    console.log('=== WATCHLIST ENDPOINT DEBUG ===');
+    console.log('Received watchlist data:', JSON.stringify(movieData, null, 2));
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if already in watchlist
+    const existingItem = user.watchlist.find(item => item.movieId === movieData.id.toString());
+    if (existingItem) {
+      return res.status(400).json({
+        success: false,
+        message: 'Movie already in watchlist'
+      });
+    }
+
+    console.log('=== CALLING addToWatchlist ===');
+    console.log('Current user watchlist length:', user.watchlist.length);
+    
+    await user.addToWatchlist(movieData);
+
+    res.json({
+      success: true,
+      message: 'Movie added to watchlist',
+      watchlist: user.watchlist
+    });
+  } catch (error) {
+    console.error('Add to watchlist error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error adding to watchlist'
+    });
+  }
+});
+
+// @route   DELETE /api/auth/watchlist/:movieId
+// @desc    Remove movie from watchlist
+// @access  Private
+router.delete('/watchlist/:movieId', auth, async (req, res) => {
+  try {
+    const { movieId } = req.params;
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    await user.removeFromWatchlist(movieId);
+
+    res.json({
+      success: true,
+      message: 'Movie removed from watchlist',
+      watchlist: user.watchlist
+    });
+  } catch (error) {
+    console.error('Remove from watchlist error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error removing from watchlist'
+    });
+  }
+});
+
+// @route   DELETE /api/auth/watchlist
+// @desc    Clear all watchlist items
+// @access  Private
+router.delete('/watchlist', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Clear all watchlist items
+    user.watchlist = [];
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'All watchlist items cleared successfully',
+      watchlist: user.watchlist
+    });
+  } catch (error) {
+    console.error('Clear watchlist error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error clearing watchlist'
+    });
+  }
+});
+
+// @route   PUT /api/auth/watchlist
+// @desc    Update user's entire watchlist
+// @access  Private
+router.put('/watchlist', auth, async (req, res) => {
+  try {
+    const { watchlist } = req.body;
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Replace entire watchlist array
+    user.watchlist = watchlist.map(item => ({
+      movieId: item.id || item.movieId,
+      title: item.title,
+      poster: item.poster,
+      description: item.description,
+      rating: item.rating,
+      year: item.year,
+      genre: item.genre || [],
+      addedAt: item.addedAt || new Date()
+    }));
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Watchlist updated successfully',
+      watchlist: user.watchlist
+    });
+  } catch (error) {
+    console.error('Update watchlist error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error updating watchlist'
     });
   }
 });

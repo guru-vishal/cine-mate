@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Heart, Star, Play, Clock, Calendar, User, Film, Image } from 'lucide-react';
+import { ArrowLeft, Heart, Star, Play, Clock, Calendar, User, Film, Image, Bookmark } from 'lucide-react';
 import { movieService } from '../services/movieService';
 import { useMovie } from '../context/MovieContext';
 import { useAuth } from '../context/AuthContext';
@@ -10,43 +10,63 @@ import { formatDuration } from '../utils/durationHelper';
 const MovieDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { favorites, addToFavorites, removeFromFavorites, movies, addToWatchHistory } = useMovie();
+  const { favorites, addToFavorites, removeFromFavorites, watchlist, addToWatchlist, removeFromWatchlist, movies, addToWatchHistory } = useMovie();
   const { user } = useAuth();
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [similarMovies, setSimilarMovies] = useState([]);
   const [posterError, setPosterError] = useState(false);
   const [backdropError, setBackdropError] = useState(false);
 
 
   const isFavorite = movie && favorites.some(fav => fav.id === movie.id);
+  const isInWatchlist = movie && watchlist.some(wl => wl.id === movie.id);
 
   useEffect(() => {
     const fetchMovie = async () => {
       setLoading(true);
+      setError(null);
       try {
         const movieData = await movieService.getMovieById(id);
-        setMovie(movieData);
         
-        // Add to watch history for recommendations
-        if (movieData && user) {
-          addToWatchHistory(movieData);
-        }
-        
-        // Get similar movies (same genre)
-        if (movieData && movies.length > 0) {
-          const similar = movies
-            .filter(m => 
-              m.id !== movieData.id && 
-              Array.isArray(m.genre) && 
-              Array.isArray(movieData.genre) &&
-              m.genre.some(g => movieData.genre.includes(g))
-            )
-            .slice(0, 4);
-          setSimilarMovies(similar);
+        // Validate movie data more thoroughly before setting or adding to history
+        if (movieData && 
+            movieData.id && 
+            movieData.title && 
+            movieData.title.trim() !== '' &&
+            (movieData.overview || movieData.description)) {
+          
+          setMovie(movieData);
+          
+          // Only add to watch history if user is logged in AND movie data is valid
+          if (user && movieData.id && movieData.title) {
+            addToWatchHistory(movieData);
+          }
+          
+          // Get similar movies (same genre)
+          if (movies.length > 0) {
+            const similar = movies
+              .filter(m => 
+                m.id !== movieData.id && 
+                Array.isArray(m.genre) && 
+                Array.isArray(movieData.genre) &&
+                m.genre.some(g => movieData.genre.includes(g))
+              )
+              .slice(0, 4);
+            setSimilarMovies(similar);
+          }
+        } else {
+          // If movie data is invalid or incomplete, don't set movie or add to history
+          console.warn('Invalid movie data received:', movieData);
+          setMovie(null);
+          setError('Movie data is incomplete or invalid');
         }
       } catch (error) {
         console.error('Error fetching movie:', error);
+        // On error, ensure movie is null and not added to watch history
+        setMovie(null);
+        setError(error.response?.data?.message || 'Failed to load movie details');
       } finally {
         setLoading(false);
       }
@@ -76,6 +96,27 @@ const MovieDetail = () => {
     }
   };
 
+  const handleWatchlistToggle = () => {
+    // Check if user is authenticated
+    if (!user) {
+      // Redirect to login page with return URL
+      navigate('/login', { 
+        state: { 
+          from: `/movie/${id}`,
+          message: 'Please log in to add movies to your watchlist'
+        }
+      });
+      return;
+    }
+
+    // User is authenticated, proceed with watchlist toggle
+    if (isInWatchlist) {
+      removeFromWatchlist(movie.id);
+    } else {
+      addToWatchlist(movie);
+    }
+  };
+
     const handleWatchNow = () => {
     // Always redirect to JustWatch for movie search
     const justWatchUrl = `https://www.justwatch.com/us/search?q=${encodeURIComponent(movie.title || '')}`;
@@ -96,14 +137,30 @@ const MovieDetail = () => {
     );
   }
 
-  if (!movie) {
+  if (!movie || error) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-white mb-4">Movie not found</h1>
-          <Link to="/" className="text-primary-400 hover:text-primary-300">
-            Go back to home
-          </Link>
+          <h1 className="text-2xl font-bold text-white mb-4">
+            {error || 'Movie not found'}
+          </h1>
+          <p className="text-gray-400 mb-6">
+            {error ? 'We encountered an issue loading this movie.' : 'The requested movie could not be found.'}
+          </p>
+          <div className="space-x-4">
+            <button
+              onClick={() => navigate(-1)}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg transition-colors duration-300"
+            >
+              Go Back
+            </button>
+            <Link 
+              to="/" 
+              className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-lg transition-colors duration-300 inline-block"
+            >
+              Go to Home
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -130,13 +187,13 @@ const MovieDetail = () => {
         </div>
 
         {/* Back Button */}
-        <Link
-          to="/"
+        <button
+          onClick={() => navigate(-1)}
           className="absolute top-6 left-4 z-20 flex items-center space-x-2 bg-black/50 text-white px-4 py-2 rounded-full backdrop-blur-sm hover:bg-black/70 transition-all duration-300"
         >
           <ArrowLeft className="h-5 w-5" />
           <span>Back</span>
-        </Link>
+        </button>
 
         {/* Content */}
         <div className="relative z-10 flex items-center min-h-full py-8 sm:py-12 lg:py-16">
@@ -187,7 +244,7 @@ const MovieDetail = () => {
                 <div className="flex items-center space-x-2">
                   <Star className="h-5 w-5 text-yellow-400 fill-current" />
                   <span className="text-white font-semibold">
-                    {movie.rating ? parseFloat(movie.rating).toFixed(1) : 'N/A'}
+                    {movie.rating && movie.rating > 0 ? parseFloat(movie.rating).toFixed(1) : 'N/A'}
                   </span>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -196,47 +253,53 @@ const MovieDetail = () => {
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2 mb-8 animate-slide-up">
-                {Array.isArray(movie.genre) && movie.genre.length > 0 ? (
-                  movie.genre.map((genre, index) => (
-                    <span
-                      key={index}
-                      className="bg-primary-600/20 text-primary-300 px-4 py-2 rounded-full border border-primary-500/30"
-                    >
-                      {genre}
-                    </span>
-                  ))
-                ) : (
-                  <span className="bg-gray-600/20 text-gray-400 px-4 py-2 rounded-full border border-gray-500/30">
-                    Genre not specified
-                  </span>
-                )}
-              </div>
+            <div className="flex flex-wrap gap-2 mb-6">
+              {movie.genre && Array.isArray(movie.genre) && movie.genre.map((genre, index) => (
+                <span
+                  key={index}
+                  className="bg-blue-600/60 text-blue-300 px-3 py-1 rounded-full text-sm border border-blue-500/30"
+                >
+                  {genre}
+                </span>
+              ))}
+            </div>
 
               <p className="text-lg sm:text-xl text-gray-300 mb-8 leading-relaxed animate-slide-up max-w-4xl">
                 {movie.description || 'No description available.'}
               </p>
 
-              <div className="flex flex-wrap gap-4 my-8 animate-scale-in">
+              <div className="flex flex-wrap gap-3 my-8 animate-scale-in">
                 <button 
                   onClick={handleWatchNow}
-                  className="flex items-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white px-8 py-4 rounded-full font-semibold transition-all duration-300 transform hover:scale-105"
+                  className="flex items-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-full font-semibold transition-all duration-300 transform hover:scale-105 whitespace-nowrap"
                   title="Watch Now - Search on JustWatch"
                 >
-                  <Play className="h-6 w-6 fill-current" />
+                  <Play className="h-5 w-5 fill-current" />
                   <span>Watch Now</span>
                 </button>
                 
                 <button
                   onClick={handleFavoriteToggle}
-                  className={`flex items-center space-x-2 px-8 py-4 rounded-full font-semibold transition-all duration-300 transform hover:scale-105 ${
+                  className={`flex items-center space-x-2 px-6 py-3 rounded-full font-semibold transition-all duration-300 transform hover:scale-105 whitespace-nowrap ${
                     isFavorite
                       ? 'bg-primary-600 text-white'
                       : 'bg-white/10 text-white border border-white/30 hover:bg-white/20'
                   }`}
                 >
-                  <Heart className={`h-6 w-6 ${isFavorite ? 'fill-current' : ''}`} />
+                  <Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} />
                   <span>{isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}</span>
+                </button>
+
+                <button
+                  onClick={handleWatchlistToggle}
+                  className={`flex items-center space-x-2 px-6 py-3 rounded-full font-semibold transition-all duration-300 transform hover:scale-105 whitespace-nowrap ${
+                    isInWatchlist
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white/10 text-white border border-white/30 hover:bg-white/20'
+                  }`}
+                >
+                  <Bookmark className={`h-5 w-5 ${isInWatchlist ? 'fill-current' : ''}`} />
+                  <span>{isInWatchlist ? 'Remove from Watchlist' : 'Save to Watchlist'}</span>
                 </button>
               </div>
 

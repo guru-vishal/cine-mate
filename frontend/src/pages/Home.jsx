@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, Film, Sparkles, Heart, Popcorn, Star, ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
+import { Play, Film, Sparkles, Heart, Popcorn, Star, ChevronLeft, ChevronRight, TrendingUp, Bookmark, Info } from 'lucide-react';
 import MovieCard from '../components/MovieCard';
 import MovieFilters from '../components/MovieFilters';
 import PersonalizedRecommendations from '../components/PersonalizedRecommendations';
@@ -22,7 +22,7 @@ const shuffleArray = (array) => {
 
 const Home = () => {
   const navigate = useNavigate();
-  const { movies, topRatedMovies, topRatedLoading, popularMovies, popularLoading, recommendations, loading, fetchMovies, fetchTopRatedMovies, fetchPopularMovies, getRecommendations, favorites, addToFavorites, removeFromFavorites, progressiveMovies } = useMovie();
+  const { movies, topRatedMovies, topRatedLoading, popularMovies, popularLoading, recommendations, loading, fetchMovies, fetchTopRatedMovies, fetchPopularMovies, getRecommendations, favorites, addToFavorites, removeFromFavorites, watchlist, addToWatchlist, removeFromWatchlist, progressiveMovies } = useMovie();
   const { user } = useAuth();
   const [heroMovie, setHeroMovie] = useState(null);
   const [filteredMovies, setFilteredMovies] = useState([]);
@@ -54,18 +54,14 @@ const Home = () => {
     const moviesArray = Array.isArray(movies) ? movies : [];
     if (moviesArray.length > 0) {
       // Debug: Check runtime data before shuffling
-      console.log('🔍 [DEBUG] Movies before shuffle - first 3 movies runtime data:');
       moviesArray.slice(0, 3).forEach((movie, index) => {
-        console.log(`${index + 1}. "${movie.title}" - runtime: ${movie.runtime || 'NO RUNTIME'}, duration: ${movie.duration || 'NO DURATION'}`);
       });
       
       // Shuffle movies for random display order every time the page loads
       const randomizedMovies = shuffleArray(moviesArray);
       
       // Debug: Check runtime data after shuffling
-      console.log('🔍 [DEBUG] Movies after shuffle - first 3 movies runtime data:');
       randomizedMovies.slice(0, 3).forEach((movie, index) => {
-        console.log(`${index + 1}. "${movie.title}" - runtime: ${movie.runtime || 'NO RUNTIME'}, duration: ${movie.duration || 'NO DURATION'}`);
       });
       
       setShuffledMovies(randomizedMovies);
@@ -145,32 +141,27 @@ const Home = () => {
   const handleTopRatedNavigation = (direction) => {
     if (isAnimating) return; // Prevent multiple clicks during animation
     
-    console.log('🎬 Starting animation:', { direction, currentPage: topRatedCurrentPage, isAnimating });
     
     setIsAnimating(true);
     setSlideDirection(direction);
     
     // Start slide out animation first
     setTimeout(() => {
-      console.log('🔄 Updating page after slide out');
       // Update page after slide out begins
       if (direction === 'next') {
         setTopRatedCurrentPage(prev => {
           const newPage = Math.min(Math.ceil(sortedTopRatedMovies.length / topRatedMoviesPerPage), prev + 1);
-          console.log('📄 Next page:', prev, '->', newPage);
           return newPage;
         });
       } else {
         setTopRatedCurrentPage(prev => {
           const newPage = Math.max(1, prev - 1);
-          console.log('📄 Previous page:', prev, '->', newPage);
           return newPage;
         });
       }
       
       // Reset animation state after slide in completes
       setTimeout(() => {
-        console.log('✅ Animation complete, resetting state');
         setIsAnimating(false);
         setSlideDirection('');
       }, 250); // Half the animation duration for slide in
@@ -181,32 +172,27 @@ const Home = () => {
   const handlePopularNavigation = (direction) => {
     if (popularIsAnimating) return; // Prevent multiple clicks during animation
     
-    console.log('🔥 Starting popular animation:', { direction, currentPage: popularCurrentPage, isAnimating: popularIsAnimating });
     
     setPopularIsAnimating(true);
     setPopularSlideDirection(direction);
     
     // Start slide out animation first
     setTimeout(() => {
-      console.log('🔄 Updating popular page after slide out');
       // Update page after slide out begins
       if (direction === 'next') {
         setPopularCurrentPage(prev => {
           const newPage = Math.min(Math.ceil(sortedPopularMovies.length / popularMoviesPerPage), prev + 1);
-          console.log('📄 Next popular page:', prev, '->', newPage);
           return newPage;
         });
       } else {
         setPopularCurrentPage(prev => {
           const newPage = Math.max(1, prev - 1);
-          console.log('📄 Previous popular page:', prev, '->', newPage);
           return newPage;
         });
       }
       
       // Reset animation state after slide in completes
       setTimeout(() => {
-        console.log('✅ Popular animation complete, resetting state');
         setPopularIsAnimating(false);
         setPopularSlideDirection('');
       }, 250); // Half the animation duration for slide in
@@ -221,19 +207,15 @@ const Home = () => {
 
   const handleFavoriteToggle = async () => {
     if (!heroMovie || !user) {
-      console.log('Cannot toggle favorite: missing heroMovie or user');
       return;
     }
     
-    console.log('Toggling favorite for movie:', heroMovie.title);
     const isCurrentlyFavorited = favorites.some(fav => fav.id === heroMovie.id);
     
     try {
       if (isCurrentlyFavorited) {
-        console.log('Removing from favorites');
         await removeFromFavorites(heroMovie.id);
       } else {
-        console.log('Adding to favorites');
         await addToFavorites(heroMovie);
       }
     } catch (error) {
@@ -242,6 +224,25 @@ const Home = () => {
   };
 
   const isHeroMovieFavorited = heroMovie && favorites.some(fav => fav.id === heroMovie.id);
+  const isHeroMovieInWatchlist = heroMovie && watchlist.some(wl => wl.id === heroMovie.id);
+
+  const handleWatchlistToggle = async () => {
+    if (!heroMovie || !user) {
+      return;
+    }
+
+    try {
+      const isCurrentlyInWatchlist = watchlist.some(wl => wl.id === heroMovie.id);
+      
+      if (isCurrentlyInWatchlist) {
+        await removeFromWatchlist(heroMovie.id);
+      } else {
+        await addToWatchlist(heroMovie);
+      }
+    } catch (error) {
+      console.error('Error toggling watchlist:', error);
+    }
+  };
 
   const LoadingSkeleton = () => (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -287,7 +288,7 @@ const Home = () => {
                   <div className="flex items-center space-x-1">
                     <span className="text-yellow-400">★</span>
                     <span className="text-white font-semibold">
-                      {heroMovie.rating ? parseFloat(heroMovie.rating).toFixed(1) : 'N/A'}
+                      {heroMovie.rating && heroMovie.rating > 0 ? parseFloat(heroMovie.rating).toFixed(1) : 'N/A'}
                     </span>
                   </div>
                   <span className="text-gray-300">{formatDuration(heroMovie.duration)}</span>
@@ -297,7 +298,7 @@ const Home = () => {
                   {(heroMovie.genre && Array.isArray(heroMovie.genre) ? heroMovie.genre : []).map((genre, index) => (
                     <span
                       key={index}
-                      className="bg-primary-600/20 text-primary-300 px-3 py-1 rounded-full text-sm border border-primary-500/30"
+                      className="bg-blue-600/60 text-blue-300 px-3 py-1 rounded-full text-sm border border-blue-500/30"
                     >
                       {genre}
                     </span>
@@ -309,10 +310,10 @@ const Home = () => {
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-4 animate-scale-in">
-                  <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex flex-row gap-4 whitespace-nowrap">
                     <button 
                       onClick={handleMoreInfo}
-                      className="flex items-center justify-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white px-6 sm:px-8 py-4 rounded-full font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-2xl"
+                      className="flex items-center justify-center space-x-2 bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-full font-semibold transition-all duration-300 transform hover:scale-105 hover:shadow-2xl whitespace-nowrap"
                     >
                       <Play className="h-5 w-5 sm:h-6 sm:w-6 fill-current" />
                       <span>Watch Now</span>
@@ -320,13 +321,14 @@ const Home = () => {
                     
                   <button 
                     onClick={handleMoreInfo}
-                    className="flex items-center justify-center space-x-2 bg-white/10 hover:bg-white/20 text-white px-6 sm:px-8 py-4 rounded-full font-semibold border border-white/30 backdrop-blur-sm transition-all duration-300 transform hover:scale-105"
+                    className="flex items-center justify-center space-x-2 bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-full font-semibold border border-white/30 backdrop-blur-sm transition-all duration-300 transform hover:scale-105 whitespace-nowrap"
                   >
+                    <Info className="h-5 w-5 sm:h-6 sm:w-6" />
                     <span>More Info</span>
                   </button>
                   </div>                  <button 
                     onClick={user ? handleFavoriteToggle : () => navigate('/login')}
-                    className={`flex items-center justify-center space-x-2 px-4 sm:px-6 py-4 rounded-full font-semibold border backdrop-blur-sm transition-all duration-300 transform hover:scale-105 ${
+                    className={`flex items-center justify-center space-x-2 px-3 sm:px-4 py-3 rounded-full font-semibold border backdrop-blur-sm transition-all duration-300 transform hover:scale-105 whitespace-nowrap ${
                       user && isHeroMovieFavorited
                         ? 'bg-red-600/80 hover:bg-red-700/80 text-white border-red-500/50'
                         : 'bg-white/10 hover:bg-white/20 text-white border-white/30'
@@ -338,7 +340,25 @@ const Home = () => {
                       {!user ? 'Login to Add Favorites' : (isHeroMovieFavorited ? 'Remove from Favorites' : 'Add to Favorites')}
                     </span>
                     <span className="sm:hidden">
-                      {!user ? 'Login' : (isHeroMovieFavorited ? 'Favorited' : 'Favorite')}
+                      {!user ? 'Login' : (isHeroMovieFavorited ? 'Remove' : 'Add Fav')}
+                    </span>
+                  </button>
+
+                  <button 
+                    onClick={user ? handleWatchlistToggle : () => navigate('/login')}
+                    className={`flex items-center justify-center space-x-2 px-3 sm:px-4 py-3 rounded-full font-semibold border backdrop-blur-sm transition-all duration-300 transform hover:scale-105 whitespace-nowrap ${
+                      user && isHeroMovieInWatchlist
+                        ? 'bg-blue-600/80 hover:bg-blue-700/80 text-white border-blue-500/50'
+                        : 'bg-white/10 hover:bg-white/20 text-white border-white/30'
+                    }`}
+                    title={!user ? 'Login to add to watchlist' : (isHeroMovieInWatchlist ? 'Remove from watchlist' : 'Save to watchlist')}
+                  >
+                    <Bookmark className={`h-5 w-5 sm:h-6 sm:w-6 ${user && isHeroMovieInWatchlist ? 'fill-current' : ''}`} />
+                    <span className="hidden sm:inline">
+                      {!user ? 'Login to Save Watchlist' : (isHeroMovieInWatchlist ? 'Remove from Watchlist' : 'Save to Watchlist')}
+                    </span>
+                    <span className="sm:hidden">
+                      {!user ? 'Login' : (isHeroMovieInWatchlist ? 'Remove' : 'Save')}
                     </span>
                   </button>
                 </div>

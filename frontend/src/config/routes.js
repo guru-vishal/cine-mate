@@ -1,6 +1,7 @@
 import Home from '../pages/Home';
 import MovieDetail from '../pages/MovieDetail';
 import Favorites from '../pages/Favorites';
+import Watchlist from '../pages/Watchlist';
 import Search from '../pages/Search';
 import Login from '../pages/Login';
 import Signup from '../pages/Signup';
@@ -36,6 +37,13 @@ export const routeConfig = [
     isProtected: true,
     title: 'Favorites',
     description: 'View and manage your favorite movies'
+  },
+  {
+    path: '/watchlist',
+    element: Watchlist,
+    isProtected: true,
+    title: 'Watchlist',
+    description: 'View and manage movies you want to watch'
   },
   {
     path: '/profile',

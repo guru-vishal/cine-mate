@@ -1,12 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Heart, HeartOff, Trash2 } from 'lucide-react';
+import { Heart, HeartOff, Trash2, Bookmark, BookmarkX } from 'lucide-react';
 import { movieService } from '../services/movieService';
 import { searchHistoryService } from '../services/searchHistoryService';
 import { watchHistoryService } from '../services/watchHistoryService';
 import { useAuth } from './AuthContext';
 import { convertGenreIdsToNames, convertGenreNamesToIds } from '../utils/genreMapping';
+import { getCachedMovieDuration } from '../utils/durationCache';
 
 const MovieContext = createContext();
 
@@ -16,6 +17,7 @@ const initialState = {
   topRatedMovies: [],
   popularMovies: [],
   favorites: JSON.parse(localStorage.getItem('favorites')) || [],
+  watchlist: JSON.parse(localStorage.getItem('watchlist')) || [],
   loading: false,
   upcomingLoading: false,
   topRatedLoading: false,
@@ -66,6 +68,22 @@ const movieReducer = (state, action) => {
     }
     case 'SET_FAVORITES':
       return { ...state, favorites: action.payload };
+    case 'ADD_TO_WATCHLIST': {
+      const newWatchlist = [...state.watchlist, action.payload];
+      localStorage.setItem('watchlist', JSON.stringify(newWatchlist));
+      return { ...state, watchlist: newWatchlist };
+    }
+    case 'REMOVE_FROM_WATCHLIST': {
+      const filteredWatchlist = state.watchlist.filter(movie => movie.id !== action.payload);
+      localStorage.setItem('watchlist', JSON.stringify(filteredWatchlist));
+      return { ...state, watchlist: filteredWatchlist };
+    }
+    case 'CLEAR_ALL_WATCHLIST': {
+      localStorage.setItem('watchlist', JSON.stringify([]));
+      return { ...state, watchlist: [] };
+    }
+    case 'SET_WATCHLIST':
+      return { ...state, watchlist: action.payload };
     case 'SET_SEARCH_RESULTS':
       return { ...state, searchResults: action.payload, loading: false };
     case 'SET_SEARCH_HISTORY':
@@ -163,10 +181,31 @@ export const MovieProvider = ({ children }) => {
             vote_average: fav.rating || 0,
             release_date: fav.year ? `${fav.year}-01-01` : '',
             genre_ids: convertGenreNamesToIds(fav.genre || []),
-            genres: fav.genre || [] // Keep both for compatibility
+            genres: fav.genre || [], // Keep both for compatibility
+            duration: fav.duration // Preserve the duration from the database
           };
         });
         dispatch({ type: 'SET_FAVORITES', payload: convertedFavorites });
+      }
+
+      // Load user watchlist from server
+      if (user.watchlist && Array.isArray(user.watchlist)) {
+        // Convert MongoDB watchlist format to MovieContext format
+        const convertedWatchlist = user.watchlist.map(item => {
+          return {
+            id: parseInt(item.movieId) || item.movieId,
+            title: item.title || 'Untitled Movie',
+            poster_path: item.poster, // This is now the full URL from MongoDB
+            poster_url: item.poster, // Same as poster_path since we store full URLs
+            overview: item.description || 'No description available.',
+            vote_average: item.rating || 0,
+            release_date: item.year ? `${item.year}-01-01` : '',
+            genre_ids: convertGenreNamesToIds(item.genre || []),
+            genres: item.genre || [], // Keep both for compatibility
+            duration: item.duration // Preserve the duration from the database
+          };
+        });
+        dispatch({ type: 'SET_WATCHLIST', payload: convertedWatchlist });
       }
       
       // Load user preferences and watch history
@@ -179,9 +218,11 @@ export const MovieProvider = ({ children }) => {
     } else {
       // User logged out - load guest data from localStorage
       const localFavorites = JSON.parse(localStorage.getItem('favorites')) || [];
+      const localWatchlist = JSON.parse(localStorage.getItem('watchlist')) || [];
       const localWatchHistory = JSON.parse(localStorage.getItem('watchHistory')) || [];
       
       dispatch({ type: 'SET_FAVORITES', payload: localFavorites });
+      dispatch({ type: 'SET_WATCHLIST', payload: localWatchlist });
       dispatch({ type: 'SET_WATCH_HISTORY', payload: localWatchHistory });
       dispatch({ type: 'CLEAR_USER_DATA' });
     }
@@ -250,11 +291,8 @@ export const MovieProvider = ({ children }) => {
     dispatch({ type: 'SET_PROGRESSIVE_MOVIES', payload: { isActive: false, totalSoFar: 0, currentSource: '', currentPage: 0 } });
     
     try {
-      console.log('🎬 Fetching movies...');
-      
       // Try to get ALL available movies with simple category approach
       try {
-        console.log('🔄 Attempting to load ALL movies...');
         const response = await movieService.getAllMovies({ 
           category: 'mixed',
           page: 1,
@@ -264,19 +302,17 @@ export const MovieProvider = ({ children }) => {
         
         if (response && response.data) {
           const movies = response.data || [];
-          console.log(`✅ Successfully loaded ${movies.length} movies`);
           dispatch({ type: 'SET_MOVIES', payload: movies });
           dispatch({ type: 'SET_LOADING', payload: false });
           dispatch({ type: 'SET_PROGRESSIVE_MOVIES', payload: { isActive: false, totalSoFar: movies.length, currentSource: 'mixed', currentPage: 1 } });
           return;
         }
-      } catch (fullLoadError) {
-        console.log('⚠️ Full movie load failed, trying smaller batch:', fullLoadError.message);
+      } catch {
+        // Fallback handling
       }
       
       // Fallback 1: Try loading 500 movies
       try {
-        console.log('🔄 Trying 500 movies...');
         const response = await movieService.getAllMovies({ 
           category: 'mixed',
           page: 1,
@@ -285,18 +321,16 @@ export const MovieProvider = ({ children }) => {
         
         if (response && response.data) {
           const movies = response.data || [];
-          console.log(`✅ Successfully loaded ${movies.length} movies (500 limit)`);
           dispatch({ type: 'SET_MOVIES', payload: movies });
           dispatch({ type: 'SET_LOADING', payload: false });
           return;
         }
-      } catch (mediumLoadError) {
-        console.log('⚠️ 500 movie load failed, trying smaller batch:', mediumLoadError.message);
+      } catch {
+        // Fallback to next attempt
       }
       
       // Fallback 2: Try loading 200 movies
       try {
-        console.log('🔄 Trying 200 movies...');
         const response = await movieService.getAllMovies({ 
           category: 'mixed',
           page: 1,
@@ -305,17 +339,15 @@ export const MovieProvider = ({ children }) => {
         
         if (response && response.data) {
           const movies = response.data || [];
-          console.log(`✅ Successfully loaded ${movies.length} movies (200 limit)`);
           dispatch({ type: 'SET_MOVIES', payload: movies });
           dispatch({ type: 'SET_LOADING', payload: false });
           return;
         }
-      } catch (smallLoadError) {
-        console.log('⚠️ 200 movie load failed, trying popular movies:', smallLoadError.message);
+      } catch {
+        // Fallback to next attempt
       }
       
       // Fallback 3: Try popular movies
-      console.log('🔄 Falling back to popular movies...');
       const fallbackResponse = await movieService.getAllMovies({ 
         category: 'popular',
         page: 1,
@@ -324,10 +356,8 @@ export const MovieProvider = ({ children }) => {
       
       if (fallbackResponse && fallbackResponse.data) {
         const movies = fallbackResponse.data || [];
-        console.log(`✅ Fallback successful: loaded ${movies.length} popular movies`);
         dispatch({ type: 'SET_MOVIES', payload: movies });
       } else {
-        console.log('⚠️ No movies found, setting empty array');
         dispatch({ type: 'SET_MOVIES', payload: [] });
       }
       
@@ -335,7 +365,6 @@ export const MovieProvider = ({ children }) => {
       console.error('❌ Movie loading failed:', error.message);
       
       // Final fallback - set empty array
-      console.log('🔄 Setting empty movies array');
       dispatch({ type: 'SET_MOVIES', payload: [] });
       dispatch({ type: 'SET_ERROR', payload: error.message });
     }
@@ -348,12 +377,10 @@ export const MovieProvider = ({ children }) => {
     dispatch({ type: 'SET_UPCOMING_LOADING', payload: true });
     
     try {
-      console.log('🎬 Fetching upcoming movies...');
       const response = await movieService.getUpcomingMovies(1, 20);
       
       if (response && response.data) {
         const upcomingMovies = Array.isArray(response.data) ? response.data : response.data.results || [];
-        console.log(`✅ Fetched ${upcomingMovies.length} upcoming movies`);
         dispatch({ type: 'SET_UPCOMING_MOVIES', payload: upcomingMovies });
       }
     } catch (error) {
@@ -365,57 +392,28 @@ export const MovieProvider = ({ children }) => {
   }, []);
 
   const fetchTopRatedMovies = useCallback(async () => {
-    const callId = Date.now();
-    
     // Prevent multiple simultaneous calls
     if (state.topRatedLoading) {
-      console.log('🚫 [FRONTEND] fetchTopRatedMovies already in progress, skipping...');
       return;
     }
     
     dispatch({ type: 'SET_TOP_RATED_LOADING', payload: true });
     
     try {
-      console.log(`🏆 [FRONTEND] Starting fetchTopRatedMovies... Call ID: ${callId}`);
-      
       // Use the new backend endpoint that returns 100 movies directly
-      console.log(`🔄 [FRONTEND] Requesting top 100 rated movies from backend...`);
       const response = await movieService.getAllMovies({ category: 'top_rated' });
-      
-      console.log(`📋 [FRONTEND] Raw response:`, {
-        hasResponse: !!response,
-        hasSuccess: !!(response && response.success),
-        hasData: !!(response && response.data),
-        dataType: response && response.data ? typeof response.data : 'undefined',
-        dataLength: response && response.data ? (Array.isArray(response.data) ? response.data.length : 'not array') : 'no data',
-        fullResponse: response
-      });
       
       if (response && response.success && response.data) {
         const movies = Array.isArray(response.data) ? response.data : [];
         
-        console.log(`✅ [FRONTEND] Received ${movies.length} top-rated movies`);
-        
-        // Log top 100 movie titles in frontend console
-        console.log('🎬 TOP 100 RATED MOVIES (Frontend):');
-        console.log('================================================================================');
-        movies.slice(0, 100).forEach((movie, index) => {
-          const year = movie.release_date ? movie.release_date.substring(0, 4) : 'Unknown';
-          console.log(`${(index + 1).toString().padStart(3)}. ${movie.title} (${movie.vote_average}⭐) - ${year}`);
-        });
-        console.log('================================================================================');
-        console.log(`✅ Logged ${Math.min(movies.length, 100)} top-rated movies`);
-        
         // Trigger backend logging endpoint
         try {
           await fetch(`${movieService.API_BASE_URL}/movies/log-top-100`);
-          console.log('🔄 [FRONTEND] Triggered backend top 100 logging');
         } catch (error) {
           console.warn('⚠️ [FRONTEND] Failed to trigger backend logging:', error.message);
         }
         
         dispatch({ type: 'SET_TOP_RATED_MOVIES', payload: movies });
-        console.log(`✅ [FRONTEND] Top-rated movies updated: ${movies.length} total`);
       } else {
         console.error('❌ [FRONTEND] Invalid response format for top-rated movies:', response);
         dispatch({ type: 'SET_TOP_RATED_MOVIES', payload: [] });
@@ -430,57 +428,28 @@ export const MovieProvider = ({ children }) => {
 
   // Fetch popular movies from backend
   const fetchPopularMovies = useCallback(async () => {
-    const callId = Date.now();
-    
     // Prevent multiple simultaneous calls
     if (state.popularLoading) {
-      console.log('🚫 [FRONTEND] fetchPopularMovies already in progress, skipping...');
       return;
     }
     
     dispatch({ type: 'SET_POPULAR_LOADING', payload: true });
     
     try {
-      console.log(`🔥 [FRONTEND] Starting fetchPopularMovies... Call ID: ${callId}`);
-      
       // Use the new backend endpoint that returns 100 movies directly
-      console.log(`🔄 [FRONTEND] Requesting top 100 popular movies from backend...`);
       const response = await movieService.getAllMovies({ category: 'popular' });
-      
-      console.log(`📋 [FRONTEND] Raw response:`, {
-        hasResponse: !!response,
-        hasSuccess: !!(response && response.success),
-        hasData: !!(response && response.data),
-        dataType: response && response.data ? typeof response.data : 'undefined',
-        dataLength: response && response.data ? (Array.isArray(response.data) ? response.data.length : 'not array') : 'no data',
-        fullResponse: response
-      });
       
       if (response && response.success && response.data) {
         const movies = Array.isArray(response.data) ? response.data : [];
         
-        console.log(`✅ [FRONTEND] Received ${movies.length} popular movies`);
-        
-        // Log top 100 movie titles in frontend console
-        console.log('🔥 TOP 100 POPULAR MOVIES (Frontend):');
-        console.log('================================================================================');
-        movies.slice(0, 100).forEach((movie, index) => {
-          const year = movie.release_date ? movie.release_date.substring(0, 4) : 'Unknown';
-          console.log(`${(index + 1).toString().padStart(3)}. ${movie.title} (${movie.vote_average}⭐) - ${year}`);
-        });
-        console.log('================================================================================');
-        console.log(`✅ Logged ${Math.min(movies.length, 100)} popular movies`);
-        
         // Trigger backend logging endpoint
         try {
           await fetch(`${movieService.API_BASE_URL}/movies/log-popular-100`);
-          console.log('🔄 [FRONTEND] Triggered backend popular 100 logging');
         } catch (error) {
           console.warn('⚠️ [FRONTEND] Failed to trigger backend logging:', error.message);
         }
         
         dispatch({ type: 'SET_POPULAR_MOVIES', payload: movies });
-        console.log(`✅ [FRONTEND] Popular movies updated: ${movies.length} total`);
       } else {
         console.error('❌ [FRONTEND] Invalid response format for popular movies:', response);
         dispatch({ type: 'SET_POPULAR_MOVIES', payload: [] });
@@ -610,12 +579,10 @@ export const MovieProvider = ({ children }) => {
         return;
       }
 
-      console.log('🔍 Starting progressive search for:', query);
       
       // Use progressive search for better UX
       await movieService.searchMoviesProgressive(query, (progressData) => {
         // Update results as they come in
-        console.log(`� Progressive update: ${progressData.newResults.length} new results, total: ${progressData.totalSoFar}`);
         
         // Show results immediately and stop loading on first batch
         if (progressData.currentPage === 1) {
@@ -634,7 +601,6 @@ export const MovieProvider = ({ children }) => {
         } });
         
         if (progressData.isComplete) {
-          console.log(`✅ Progressive search complete: ${progressData.totalSoFar} total results`);
           // Save to search history when search is complete
           if (user && query.trim()) {
             saveSearchHistory(query.trim(), progressData.totalSoFar);
@@ -646,7 +612,6 @@ export const MovieProvider = ({ children }) => {
       console.error('❌ Progressive search failed:', error.message);
       
       // Fallback to regular search
-      console.log('🔄 Falling back to regular search...');
       try {
         const response = await movieService.searchMovies(query);
         const results = response.data || [];
@@ -680,25 +645,10 @@ export const MovieProvider = ({ children }) => {
             year: movie.release_date ? new Date(movie.release_date).getFullYear().toString() : 
                   movie.year ? movie.year.toString() : '',
             // Handle both TMDB and database formats for genre
-            genre: movie.genre || convertGenreIdsToNames(movie.genre_ids || [])
+            genre: movie.genre || convertGenreIdsToNames(movie.genre_ids || []),
+            // Preserve duration to prevent recalculation
+            duration: movie.duration || movie.runtime
           };
-
-          // Debug logging - check all movie properties
-          console.log('=== FRONTEND DEBUG ===');
-          console.log('Original movie object (all properties):', Object.keys(movie));
-          console.log('Full movie object:', movie);
-          console.log('poster_path:', movie.poster_path);
-          console.log('poster_url:', movie.poster_url);
-          console.log('genre_ids:', movie.genre_ids);
-          console.log('genres:', movie.genres);
-          console.log('overview:', movie.overview);
-          console.log('description:', movie.description);
-          console.log('vote_average:', movie.vote_average);
-          console.log('rating:', movie.rating);
-          console.log('release_date:', movie.release_date);
-          console.log('convertGenreIdsToNames(movie.genre_ids):', convertGenreIdsToNames(movie.genre_ids || []));
-          console.log('Final movieData being sent:', movieData);
-          console.log('=== END FRONTEND DEBUG ===');
 
           const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/auth/favorites/${movie.id}`, {
             method: 'POST',
@@ -712,7 +662,12 @@ export const MovieProvider = ({ children }) => {
           const data = await response.json();
           
           if (data.success) {
-            dispatch({ type: 'ADD_TO_FAVORITES', payload: movie });
+            // Create a properly formatted movie object for the state
+            const movieForState = {
+              ...movie,
+              duration: movieData.duration
+            };
+            dispatch({ type: 'ADD_TO_FAVORITES', payload: movieForState });
             // Show success toast
             toast.success(`"${movie.title}" added to favorites!`, {
               duration: 3000,
@@ -735,7 +690,11 @@ export const MovieProvider = ({ children }) => {
         }
       } else {
         // Add to localStorage for guest users
-        dispatch({ type: 'ADD_TO_FAVORITES', payload: movie });
+        const movieForState = {
+          ...movie,
+          duration: movie.duration || movie.runtime || getCachedMovieDuration(movie)
+        };
+        dispatch({ type: 'ADD_TO_FAVORITES', payload: movieForState });
         // Show success toast for guest users
         toast.success(`"${movie.title}" added to favorites!`, {
           duration: 3000,
@@ -862,6 +821,205 @@ export const MovieProvider = ({ children }) => {
     }
   };
 
+  // Watchlist functions
+  const addToWatchlist = async (movie) => {
+    if (!state.watchlist.find(item => item.id === movie.id)) {
+      if (user) {
+        // Add to user's watchlist on server
+        try {
+          const movieData = {
+            id: movie.id,
+            title: movie.title,
+            // Handle both TMDB and database formats for poster
+            poster: movie.poster_url || 
+                    (movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : null),
+            // Handle both TMDB and database formats for description  
+            description: movie.overview || movie.description,
+            // Handle both TMDB and database formats for rating
+            rating: movie.vote_average || movie.rating,
+            // Handle both TMDB and database formats for year
+            year: movie.release_date ? new Date(movie.release_date).getFullYear().toString() : 
+                  movie.year ? movie.year.toString() : '',
+            // Handle both TMDB and database formats for genre
+            genre: movie.genre || convertGenreIdsToNames(movie.genre_ids || []),
+            // Preserve duration to prevent recalculation
+            duration: movie.duration || movie.runtime
+          };
+
+          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/auth/watchlist`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify(movieData)
+          });
+
+          const data = await response.json();
+          
+          if (data.success) {
+            // Create a properly formatted movie object for the state
+            const movieForState = {
+              ...movie,
+              duration: movieData.duration
+            };
+            dispatch({ type: 'ADD_TO_WATCHLIST', payload: movieForState });
+            // Show success toast
+            toast.success(`"${movieData.title}" added to watchlist!`, {
+              duration: 3000,
+              icon: <Bookmark className="h-5 w-5 text-blue-500" />,
+              style: {
+                background: '#1e293b',
+                color: '#f1f5f9',
+                border: '1px solid #10b981',
+              },
+            });
+          } else {
+            throw new Error(data.message);
+          }
+        } catch (error) {
+          console.error('Error adding to watchlist:', error);
+          toast.error('Failed to add to watchlist. Please try again.');
+          dispatch({ type: 'SET_ERROR', payload: 'Failed to add to watchlist. Please try again.' });
+        }
+      } else {
+        // Add to localStorage for guest users
+        const movieData = {
+          id: movie.id,
+          title: movie.title,
+          poster: movie.poster_url || 
+                  (movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : null),
+          description: movie.overview || movie.description,
+          rating: movie.vote_average || movie.rating,
+          year: movie.release_date ? new Date(movie.release_date).getFullYear().toString() : 
+                movie.year ? movie.year.toString() : '',
+          genre: movie.genre || convertGenreIdsToNames(movie.genre_ids || []),
+          duration: movie.duration || movie.runtime || getCachedMovieDuration(movie)
+        };
+
+        dispatch({ type: 'ADD_TO_WATCHLIST', payload: movieData });
+        // Show success toast for guest users
+        toast.success(`"${movieData.title}" added to watchlist!`, {
+          duration: 3000,
+          icon: <Bookmark className="h-5 w-5 text-blue-500" />,
+          style: {
+            background: '#1e293b',
+            color: '#f1f5f9',
+            border: '1px solid #10b981',
+          },
+        });
+      }
+    }
+  };
+
+  const removeFromWatchlist = async (movieId) => {
+    if (user) {
+      // Remove from user's watchlist on server
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/auth/watchlist/${movieId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+          // Find the movie title before removing it
+          const removedMovie = state.watchlist.find(item => item.id === movieId);
+          const movieTitle = removedMovie?.title || 'Movie';
+          
+          dispatch({ type: 'REMOVE_FROM_WATCHLIST', payload: movieId });
+          // Show success toast
+          toast.success(`"${movieTitle}" removed from watchlist!`, {
+            duration: 3000,
+            icon: <BookmarkX className="h-5 w-5 text-gray-500" />,
+            style: {
+              background: '#1e293b',
+              color: '#f1f5f9',
+              border: '1px solid #6b7280',
+            },
+          });
+        } else {
+          throw new Error(data.message);
+        }
+      } catch (error) {
+        console.error('Error removing from watchlist:', error);
+        toast.error('Failed to remove from watchlist. Please try again.');
+        dispatch({ type: 'SET_ERROR', payload: 'Failed to remove from watchlist. Please try again.' });
+      }
+    } else {
+      // Find the movie title before removing it for guest users
+      const removedMovie = state.watchlist.find(item => item.id === movieId);
+      const movieTitle = removedMovie?.title || 'Movie';
+      
+      // Remove from localStorage for guest users
+      dispatch({ type: 'REMOVE_FROM_WATCHLIST', payload: movieId });
+      // Show success toast for guest users
+      toast.success(`"${movieTitle}" removed from watchlist!`, {
+        duration: 3000,
+        icon: <BookmarkX className="h-5 w-5 text-gray-500" />,
+        style: {
+          background: '#1e293b',
+          color: '#f1f5f9',
+          border: '1px solid #6b7280',
+        },
+      });
+    }
+  };
+
+  const clearAllWatchlist = async () => {
+    if (user) {
+      // Clear all watchlist on server
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/auth/watchlist`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+          const watchlistCount = state.watchlist.length;
+          dispatch({ type: 'CLEAR_ALL_WATCHLIST' });
+          // Show success toast
+          toast.success(`All ${watchlistCount} watchlist item${watchlistCount !== 1 ? 's' : ''} cleared!`, {
+            duration: 3000,
+            icon: <Trash2 className="h-5 w-5 text-red-600" />,
+            style: {
+              background: '#1e293b',
+              color: '#f1f5f9',
+              border: '1px solid #dc2626',
+            },
+          });
+        } else {
+          throw new Error(data.message);
+        }
+      } catch (error) {
+        console.error('Error clearing all watchlist:', error);
+        toast.error('Failed to clear watchlist. Please try again.');
+        dispatch({ type: 'SET_ERROR', payload: 'Failed to clear watchlist. Please try again.' });
+      }
+    } else {
+      // Clear all watchlist from localStorage for guest users
+      const watchlistCount = state.watchlist.length;
+      dispatch({ type: 'CLEAR_ALL_WATCHLIST' });
+      // Show success toast for guest users
+      toast.success(`All ${watchlistCount} watchlist item${watchlistCount !== 1 ? 's' : ''} cleared!`, {
+        duration: 3000,
+        icon: <Trash2 className="h-5 w-5 text-red-600" />,
+        style: {
+          background: '#1e293b',
+          color: '#f1f5f9',
+          border: '1px solid #dc2626',
+        },
+      });
+    }
+  };
+
   const getRecommendations = useCallback(async (movieId = null) => {
     try {
       let recommendations;
@@ -902,6 +1060,16 @@ export const MovieProvider = ({ children }) => {
 
   // Add movie to watch history
   const addToWatchHistory = useCallback(async (movie) => {
+    // Validate movie data before adding to watch history
+    if (!movie || 
+        !movie.id || 
+        !movie.title || 
+        movie.title.trim() === '' ||
+        typeof movie.id !== 'number') {
+      console.warn('Invalid movie data provided to addToWatchHistory:', movie);
+      return;
+    }
+
     const historyItem = {
       ...movie,
       watchedAt: new Date().toISOString()
@@ -927,17 +1095,61 @@ export const MovieProvider = ({ children }) => {
     
     const genreCount = {};
     state.favorites.forEach(movie => {
+      let movieGenres = [];
+      
+      // Handle different genre structures
       if (movie.genre && Array.isArray(movie.genre)) {
-        movie.genre.forEach(genre => {
-          genreCount[genre] = (genreCount[genre] || 0) + 1;
-        });
+        movieGenres = movie.genre;
+      } else if (movie.genre_ids && Array.isArray(movie.genre_ids)) {
+        movieGenres = convertGenreIdsToNames(movie.genre_ids);
+      } else if (movie.genres && Array.isArray(movie.genres)) {
+        movieGenres = movie.genres.map(g => typeof g === 'string' ? g : g.name);
       }
+      
+      movieGenres.forEach(genre => {
+        if (genre && typeof genre === 'string') {
+          genreCount[genre] = (genreCount[genre] || 0) + 1;
+        }
+      });
     });
 
     return Object.entries(genreCount)
       .sort(([,a], [,b]) => b - a)
-      .slice(0, 5)
+      .slice(0, 10) // Increased from 5 to 10 for more comprehensive data
       .map(([genre]) => genre);
+  }, [state.favorites]);
+
+  // Get genre statistics with counts for charts
+  const getFavoriteGenreStats = useCallback(() => {
+    if (state.favorites.length === 0) return [];
+    
+    const genreCount = {};
+    state.favorites.forEach(movie => {
+      let movieGenres = [];
+      
+      // Handle different genre structures
+      if (movie.genre && Array.isArray(movie.genre)) {
+        movieGenres = movie.genre;
+      } else if (movie.genre_ids && Array.isArray(movie.genre_ids)) {
+        movieGenres = convertGenreIdsToNames(movie.genre_ids);
+      } else if (movie.genres && Array.isArray(movie.genres)) {
+        movieGenres = movie.genres.map(g => typeof g === 'string' ? g : g.name);
+      }
+      
+      movieGenres.forEach(genre => {
+        if (genre && typeof genre === 'string') {
+          genreCount[genre] = (genreCount[genre] || 0) + 1;
+        }
+      });
+    });
+
+    return Object.entries(genreCount)
+      .sort(([,a], [,b]) => b - a)
+      .map(([genre, count]) => ({
+        name: genre,
+        value: count,
+        percentage: ((count / state.favorites.length) * 100).toFixed(1)
+      }));
   }, [state.favorites]);
 
   // Check if movie is favorite
@@ -1001,6 +1213,11 @@ export const MovieProvider = ({ children }) => {
     clearAllFavorites,
     isFavoriteMovie,
     
+    // Watchlist functions
+    addToWatchlist,
+    removeFromWatchlist,
+    clearAllWatchlist,
+    
     // Recommendations functions
     getRecommendations,
     getPersonalizedRecommendations,
@@ -1014,6 +1231,7 @@ export const MovieProvider = ({ children }) => {
     
     // User preferences functions
     getFavoriteGenres,
+    getFavoriteGenreStats,
     
     // Utility functions
     clearUserData,

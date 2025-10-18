@@ -3,9 +3,11 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import ScrollToTop from './components/ScrollToTop';
 import Home from './pages/Home';
 import MovieDetail from './pages/MovieDetail';
 import Favorites from './pages/Favorites';
+import Watchlist from './pages/Watchlist';
 import Search from './pages/Search';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -22,6 +24,7 @@ function App() {
     <AuthProvider>
       <MovieProvider>
         <Router>
+          <ScrollToTop />
           <div className="min-h-screen bg-gradient-to-br from-dark-900 via-dark-800 to-gray-900 flex flex-col">
             <Navbar />
             <main className="flex-1">
@@ -58,6 +61,14 @@ function App() {
                 element={
                   <RouteGuard type="protected">
                     <Favorites />
+                  </RouteGuard>
+                } 
+              />
+              <Route 
+                path="/watchlist" 
+                element={
+                  <RouteGuard type="protected">
+                    <Watchlist />
                   </RouteGuard>
                 } 
               />
