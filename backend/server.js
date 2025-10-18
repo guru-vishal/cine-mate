@@ -21,6 +21,8 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 const allowedOrigins = [
+  "http://localhost:5000",
+  "http://localhost:5173",
   "https://cine-mate-ashy.vercel.app", // your frontend URL
   "https://cine-mate-plum.vercel.app", // backend domain if needed
 ];
